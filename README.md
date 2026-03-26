@@ -2,10 +2,11 @@
 
 Run Claude Code with a 122 billion parameter AI model on Apple Silicon. No cloud. No API fees. No data leaves your machine.
 
-Now with **Google's TurboQuant** — 4.9x KV cache compression at full speed.
+**48 tokens/second. 17 seconds per Claude Code task. 7.5x faster than llama.cpp.**
 
 ```
-You → Claude Code → Local Proxy → llama-server (TurboQuant) → Qwen 3.5 122B → Apple Silicon GPU
+You → Claude Code → MLX Native Server → Qwen 3.5 122B → Apple Silicon GPU
+         (no proxy, no translation — direct Anthropic API)
 ```
 
 ## Why This Exists
@@ -14,90 +15,67 @@ Claude Code is the best AI coding agent available. But it requires an internet c
 
 **What you get:**
 - Full Claude Code experience (Cowork, projects, tools, file editing) powered by local AI
-- 122B parameter model generating production-quality code at **41 tokens/second**
-- TurboQuant KV cache compression — **4.9x smaller cache, no quality loss**
-- Chrome DevTools Protocol (CDP) browser control — your real browser, not a sandbox
+- 122B parameter model at **48 tokens/second** on Apple Silicon
+- **7.5x faster** Claude Code tasks vs llama.cpp setups
+- Native Anthropic Messages API — no proxy layer, no translation overhead
+- 4-bit KV cache quantization on Metal GPU
 - Everything runs on-device. Your code never touches a server.
 
 ## Benchmarks — Qwen 3.5 122B on M5 Max (128 GB)
 
-### TurboQuant vs Baseline
+### MLX Native vs llama.cpp TurboQuant
 
-| Cache Type | Compression | Speed | Coding Task |
-|------------|-------------|-------|-------------|
-| q8_0 (baseline) | 2.0x | 43.7 tok/s | 11.4s |
-| **turbo3 (TurboQuant)** | **4.9x** | **41.0 tok/s** | **11.2s** |
+| Test | llama.cpp TurboQuant | MLX Native (ours) | Improvement |
+|------|---------------------|-------------------|-------------|
+| Code generation | 41.0 tok/s | **48.3 tok/s** | **+18%** |
+| Claude Code E2E | 133s | **17.6s** | **7.5x faster** |
 
-94% of baseline speed at 2.4x better compression. The real win is long context — turbo3's smaller cache means coding sessions stay fast where baseline would choke.
+### Three Generations of Optimization
 
-### Before TurboQuant (via Ollama)
+| Gen | Server | Speed | Claude Code Task |
+|-----|--------|-------|-----------------|
+| 1 | Ollama + proxy | 30 tok/s | ~133s |
+| 2 | llama.cpp TurboQuant + proxy | 41 tok/s | ~133s |
+| **3** | **MLX Native (direct)** | **48 tok/s** | **17.6s** |
 
-| Test | Speed | Result |
-|------|-------|--------|
-| Code generation | 30.3 tok/s | Correct |
-| Claude Code end-to-end | ~30 tok/s | Correct |
-
-### After TurboQuant (via llama-server)
-
-| Test | Speed | Result |
-|------|-------|--------|
-| Code generation | **41.0 tok/s** | Correct |
-| Claude Code end-to-end | **~41 tok/s** | Correct |
-
-**37% faster** than the Ollama setup, with 4.9x cache compression on top.
+The proxy was the bottleneck. Eliminating it changed everything.
 
 ## Requirements
 
-- **Mac with Apple Silicon** (M1 Pro/Max or later recommended)
-- **Memory requirements:**
-  - 122B model: 96+ GB unified memory (M2/M3/M4/M5 Max or Ultra)
-  - 35B MoE model: 32+ GB (Pro-tier Macs)
-  - Smaller models: 8+ GB (any Apple Silicon Mac)
-- **Claude Code** installed (`npm install -g @anthropic-ai/claude-code`)
-- **cmake** for building llama.cpp (`brew install cmake`)
+- **Mac with Apple Silicon** (M1 Pro/Max or later)
+- **Memory:** 96+ GB unified memory for 122B model (M2/M3/M4/M5 Max or Ultra)
+- **Python 3.12+** with mlx-lm installed
+- **Claude Code** (`npm install -g @anthropic-ai/claude-code`)
 
 ## Quick Start
 
-### 1. Build llama-server with TurboQuant
+### 1. Set up the MLX environment
 
 ```bash
-git clone https://github.com/TheTom/llama-cpp-turboquant.git
-cd llama-cpp-turboquant
-git checkout feature/turboquant-kv-cache
-cmake -B build -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+# Create a venv with mlx-lm
+python3.12 -m venv ~/.local/mlx-server
+~/.local/mlx-server/bin/pip install mlx-lm
 ```
 
-### 2. Download a model
+### 2. Download the model
+
+First run will auto-download from HuggingFace (~50 GB):
 
 ```bash
-# 122B (71 GB — needs 96+ GB RAM)
-# This is a 3-part GGUF from HuggingFace:
-mkdir -p ~/local_llms/models/qwen122b
-cd ~/local_llms/models/qwen122b
-BASE="https://huggingface.co/unsloth/Qwen3.5-122B-A10B-GGUF/resolve/main/Q4_K_M"
-curl -L -C - --retry 10 -o part1.gguf "$BASE/Qwen3.5-122B-A10B-Q4_K_M-00001-of-00003.gguf"
-curl -L -C - --retry 10 -o part2.gguf "$BASE/Qwen3.5-122B-A10B-Q4_K_M-00002-of-00003.gguf"
-curl -L -C - --retry 10 -o part3.gguf "$BASE/Qwen3.5-122B-A10B-Q4_K_M-00003-of-00003.gguf"
+~/.local/mlx-server/bin/python3 -c "
+from mlx_lm.utils import load
+load('mlx-community/Qwen3.5-122B-A10B-4bit')
+print('Model ready')
+"
 ```
 
-### 3. Start llama-server with TurboQuant
+### 3. Start the server
 
 ```bash
-./llama-cpp-turboquant/build/bin/llama-server \
-  -m ~/local_llms/models/qwen122b/part1.gguf \
-  -ngl 99 -c 4096 -fa on \
-  --cache-type-k turbo3 --cache-type-v turbo3 \
-  -np 1 --host 127.0.0.1 --port 8090
+~/.local/mlx-server/bin/python3 proxy/server.py
 ```
 
-### 4. Start the proxy
-
-```bash
-python3 proxy/proxy.py &
-```
-
-### 5. Launch Claude Code
+### 4. Launch Claude Code
 
 ```bash
 ANTHROPIC_BASE_URL=http://localhost:4000 \
@@ -107,102 +85,93 @@ claude --model claude-sonnet-4-6
 
 ### Or: Double-click the launcher
 
-Copy `launchers/Claude Local.command` to your Desktop. Double-click it. It auto-starts llama-server, the proxy, and Claude Code.
+Copy `launchers/Claude Local.command` to your Desktop. Double-click. Done.
+
+## How It Works
+
+Most local AI setups for Claude Code look like this:
+```
+Claude Code → Proxy (translates API) → Ollama/llama.cpp → Model
+```
+
+We eliminated the middle layers:
+```
+Claude Code → MLX Native Server (speaks Anthropic API directly) → Model
+```
+
+The server (`proxy/server.py`) is a single Python file (~250 lines) that:
+1. Loads the model via Apple's MLX framework (native Metal GPU acceleration)
+2. Serves the Anthropic Messages API that Claude Code expects
+3. Handles Qwen 3.5's thinking/reasoning mode (strips `<think>` tags)
+4. Compresses KV cache to 4-bit on the Metal GPU
+5. No proxy, no translation, no overhead
 
 ## Architecture
 
 ```
-Claude Code                    Proxy (:4000)              llama-server (:8090)
-    |                           |                              |
-    |-- Anthropic Messages ---->|                              |
-    |                           |-- OpenAI Chat Completions -->|
-    |                           |                              | (TurboQuant turbo3
-    |                           |                              |  4.9x KV compression)
-    |                           |<-- Response -----------------|
-    |                           |   (strips <think> tags,      |
-    |                           |    extracts clean content)    |
-    |<-- Anthropic response ----|                              |
+Claude Code                         MLX Native Server (:4000)
+    |                                     |
+    |--- Anthropic Messages POST -------->|
+    |                                     |--- mlx-lm generate --->  Model (GPU)
+    |                                     |     (4-bit KV cache)
+    |                                     |<-- tokens + text ------
+    |                                     |   strip <think> tags
+    |<-- Anthropic response --------------|
 ```
 
-**The proxy** translates between Claude Code's Anthropic API and llama-server's OpenAI API. It also handles Qwen 3.5's "thinking" mode — extracting clean answers from the model's internal reasoning.
-
-**TurboQuant** compresses the KV cache (the model's conversation memory) by 4.9x using Google's PolarQuant + Walsh-Hadamard rotation algorithm. This means longer conversations stay fast.
-
-## What is TurboQuant?
-
-[TurboQuant](https://research.google/blog/turboquant-redefining-ai-efficiency-with-extreme-compression/) (ICLR 2026) is Google's algorithm for compressing LLM KV caches. It's different from model weight quantization (like Q4_K_M):
-
-- **Model quantization** (Q4_K_M) shrinks the model file — applied once at download time
-- **KV cache quantization** (TurboQuant) shrinks the conversation memory — applied during every inference
-
-Both work together. Your model is Q4_K_M (weight compression) running with turbo3 (KV cache compression). Double compression, zero quality loss.
-
-| | Without TurboQuant | With TurboQuant |
-|---|---|---|
-| KV cache at 32K context | ~8 GB | ~1.6 GB |
-| Long conversation speed | Degrades | Stays fast |
-| Max practical context | ~8K tokens | ~40K+ tokens |
+One hop. One process. One file.
 
 ## Browser Control (CDP)
 
-Two browser control options, each serving different use cases:
+Two browser options, each for different use cases:
 
 | Tool | Browser | Use Case |
 |------|---------|----------|
-| **chrome-devtools-mcp** (CDP) | Your real Brave/Chrome | Logged-in tasks, real sessions |
-| **playwright** (sandboxed) | Isolated instance | Automated jobs, scraping |
+| **chrome-devtools-mcp** | Your real Brave/Chrome | Logged-in tasks, real sessions |
+| **playwright** | Sandboxed instance | Automated jobs, scraping |
 
-CDP controls your actual browser — already logged into GitHub, Shopify, Vercel, whatever. No re-authenticating every session.
-
-Setup: Launch Brave with `--remote-debugging-port=9222` or visit `brave://inspect/#remote-debugging`.
+CDP controls your actual browser — already logged into everything. No re-authenticating.
 
 ## Using With Claude Max
 
-This setup complements a Claude Max subscription:
-
-- **Online:** Claude Code with Anthropic's API (fastest, most capable)
-- **Offline/Private:** Double-click `Claude Local` for local AI (41 tok/s, fully private)
-- **From your phone:** Use Dispatch or iMessage to control either mode remotely
+- **Online:** Claude Code with Anthropic API (fastest, most capable)
+- **Offline/Private:** Double-click `Claude Local` (48 tok/s, fully private)
+- **From phone:** Dispatch or iMessage to control either mode
 
 ## Project Structure
 
 ```
 ├── proxy/
-│   └── proxy.py              # Anthropic ↔ OpenAI API translator (zero deps)
+│   └── server.py            # MLX Native Anthropic Server (the whole thing)
 ├── launchers/
-│   ├── Claude Local.command   # Double-click launcher (TurboQuant + Claude Code)
-│   └── Browser Agent.command  # Browser automation launcher
+│   ├── Claude Local.command  # Double-click launcher
+│   └── Browser Agent.command # Browser automation
 ├── scripts/
-│   ├── download-and-import.sh # GGUF model downloader
-│   ├── persistent-download.sh # Auto-retry model puller
-│   └── start-mlx-server.sh   # MLX server (alternative backend)
-├── setup.sh                   # One-command installer
+│   ├── download-and-import.sh
+│   ├── persistent-download.sh
+│   └── start-mlx-server.sh
 ├── docs/
-│   ├── BENCHMARKS.md          # Full benchmark results
-│   └── TWITTER-THREAD.md      # Social media content
+│   ├── BENCHMARKS.md         # Full benchmark comparison
+│   └── TWITTER-THREAD.md
+├── setup.sh
 └── README.md
 ```
 
 ## Security
 
-Every dependency in this project was audited before use:
-
-- **Proxy** — our code, zero dependencies, 150 lines of Python
-- **llama-server** — compiled from source (llama.cpp fork)
-- **TurboQuant** — audited: zero network calls, zero file access, only numpy + scipy
-- **No pip packages from strangers** — we removed LiteLLM after supply chain concerns
-
-The model runs entirely on your hardware. No telemetry, no phone-home, no data exfiltration.
+Every component was audited:
+- **Server** — our code, ~250 lines, zero network dependencies
+- **Model** — loaded from HuggingFace's verified mlx-community
+- **MLX** — Apple's official framework
+- No pip packages from strangers. No telemetry. No phone-home.
 
 ## Credits
 
-Built on:
 - [Claude Code](https://claude.ai/claude-code) by Anthropic
-- [llama.cpp](https://github.com/ggerganov/llama.cpp) + [TurboQuant fork](https://github.com/TheTom/llama-cpp-turboquant) by TheTom
-- [TurboQuant](https://research.google/blog/turboquant-redefining-ai-efficiency-with-extreme-compression/) algorithm by Google Research (ICLR 2026)
+- [MLX](https://github.com/ml-explore/mlx) by Apple
+- [mlx-lm](https://github.com/ml-explore/mlx-examples) for model serving
 - [Qwen 3.5](https://qwenlm.github.io/) by Alibaba
-- [chrome-devtools-mcp](https://github.com/anthropics/chrome-devtools-mcp) for CDP browser control
-- Tested on Apple M5 Max with 128 GB unified memory
+- Benchmarked on Apple M5 Max with 128 GB unified memory
 
 ## License
 
