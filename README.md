@@ -139,7 +139,7 @@ So everyone builds a **proxy** to translate between them. That proxy adds latenc
 | Your Mac | RAM | What You Can Run |
 |----------|-----|-------------------|
 | M1/M2/M3/M4 (base) | 8-16 GB | 🟡 Small models (4B) |
-| M1/M2/M3/M4 Pro | 18-36 GB | 🟠 Medium models (32B) |
+| M1/M2/M3/M4 Pro | 18-36 GB | 🟠 Medium models (35B) |
 | M2/M3/M4/M5 Max | 64-128 GB | 🟢 **Large models (122B)** |
 | M2/M3/M4 Ultra | 128-192 GB | 🔵 Multiple large models |
 
