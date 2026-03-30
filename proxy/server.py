@@ -25,9 +25,11 @@ from mlx_lm.sample_utils import make_sampler
 
 MODEL_PATH = os.environ.get("MLX_MODEL", "mlx-community/Qwen3.5-122B-A10B-4bit")
 PORT = int(os.environ.get("MLX_PORT", "4000"))
-KV_BITS = int(os.environ.get("MLX_KV_BITS", "4"))
+KV_BITS = int(os.environ.get("MLX_KV_BITS", "8"))
 PREFILL_SIZE = int(os.environ.get("MLX_PREFILL_SIZE", "4096"))
 DEFAULT_MAX_TOKENS = int(os.environ.get("MLX_MAX_TOKENS", "8192"))
+KV_QUANT_START = int(os.environ.get("MLX_KV_QUANT_START", "1024"))
+MAX_TOOL_RETRIES = int(os.environ.get("MLX_TOOL_RETRIES", "2"))
 # Browser mode: strip Claude Code bloat, keep only MCP tools
 BROWSER_MODE = os.environ.get("MLX_BROWSER_MODE", "0") == "1"
 
@@ -107,9 +109,19 @@ def convert_tools_for_qwen(anthropic_tools):
 def format_tools_as_text(tools):
     """Format tools as text for system prompt (fallback if chat template doesn't support tools param)."""
     lines = ["# Available Tools\n"]
-    lines.append("You can call tools by outputting <tool_call> blocks. Format:")
-    lines.append('<tool_call>\n{"name": "tool_name", "arguments": {"key": "value"}}\n</tool_call>\n')
-    lines.append("You may call multiple tools in one response. Output any reasoning text before the tool calls.\n")
+    lines.append("CRITICAL: You MUST call tools using EXACTLY this JSON format inside <tool_call> tags:")
+    lines.append("")
+    lines.append('<tool_call>')
+    lines.append('{"name": "Bash", "arguments": {"command": "ls -la"}}')
+    lines.append('</tool_call>')
+    lines.append("")
+    lines.append("RULES:")
+    lines.append('- The content inside <tool_call> MUST be valid JSON with "name" and "arguments" keys')
+    lines.append('- Do NOT use <parameter=...> tags inside <tool_call> — use the "arguments" JSON object')
+    lines.append('- Do NOT mix XML and JSON — use ONLY pure JSON inside the tags')
+    lines.append("- You may call multiple tools by using multiple <tool_call> blocks")
+    lines.append("- Output any reasoning text BEFORE the tool calls, not inside them")
+    lines.append("")
     for tool in tools:
         func = tool.get("function", tool)
         name = func.get("name", "")
@@ -128,6 +140,76 @@ def format_tools_as_text(tools):
                 lines.append(f"  - {pname}: {ptype}{req} — {pdesc}")
         lines.append("")
     return "\n".join(lines)
+
+
+def recover_garbled_tool_json(content, original_text=""):
+    """Attempt to recover tool name and arguments from garbled JSON inside <tool_call> tags.
+
+    Qwen frequently produces hybrid XML/JSON like:
+      {"name": "Bash", "parameter=command>cd ~/Desktop && rm -rf ...
+      {"name": "Bash", "<parameter_commands>["rm -rf ...
+      {"name": "Edit", "parameter=file_path>/some/path</parameter...
+    """
+    # Extract tool name
+    name_match = re.search(r'"name"\s*:\s*"([^"]+)"', content)
+    if not name_match:
+        return None
+    tool_name = name_match.group(1)
+
+    arguments = {}
+
+    # Pattern A: "parameter=key>value" (most common garble)
+    # Matches: "parameter=command>cd ~/Desktop..." or parameter=command>value</parameter>
+    param_a = re.finditer(r'["\s,]?parameter=(\w+)>\s*(.*?)(?:</parameter>|$)', content, re.DOTALL)
+    for m in param_a:
+        key = m.group(1)
+        val = m.group(2).strip().rstrip('"}\n')
+        if val:
+            arguments[key] = val
+
+    # Pattern B: "<parameter_key>value" or "<parameter_key>["value"]"
+    if not arguments:
+        param_b = re.finditer(r'<parameter[_=](\w+)>\s*(.*?)(?:</parameter|<|$)', content, re.DOTALL)
+        for m in param_b:
+            key = m.group(1)
+            val = m.group(2).strip().strip('[]"')
+            if val:
+                arguments[key] = val
+
+    # Pattern C: "arguments" key exists but is malformed — try to extract the value after it
+    if not arguments:
+        args_match = re.search(r'"arguments"\s*:\s*\{(.*)', content, re.DOTALL)
+        if args_match:
+            raw = args_match.group(1)
+            # Try to find key-value pairs
+            kv_matches = re.finditer(r'"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)
+            for m in kv_matches:
+                arguments[m.group(1)] = m.group(2)
+
+    # Pattern D: single-argument tools — if we have a tool name and leftover text, use it
+    # Common for Bash (command), Read (file_path), etc.
+    if not arguments:
+        single_arg_tools = {
+            "Bash": "command", "Read": "file_path", "Write": "file_path",
+            "Glob": "pattern", "Grep": "pattern",
+        }
+        if tool_name in single_arg_tools:
+            # Everything after the tool name declaration is likely the argument value
+            after_name = content[name_match.end():]
+            # Strip JSON noise
+            val = re.sub(r'^[\s,":{}]+', '', after_name)
+            val = re.sub(r'[\s"}]+$', '', val)
+            # Remove parameter= prefix if present
+            val = re.sub(r'^parameter=\w+>\s*', '', val)
+            val = re.sub(r'^<parameter[_=]\w+>\s*', '', val)
+            if val and len(val) > 2:
+                arguments[single_arg_tools[tool_name]] = val
+
+    if arguments:
+        log(f"  Recovered garbled tool call: {tool_name} with {list(arguments.keys())}")
+        return {"name": tool_name, "arguments": arguments}
+
+    return None
 
 
 def parse_tool_calls(text):
@@ -151,48 +233,104 @@ def parse_tool_calls(text):
                 "arguments": call_data.get("arguments", {}),
             })
         except json.JSONDecodeError:
-            log(f"  Warning: failed to parse tool_call JSON: {content[:100]}")
+            # The model often puts Format 2 (<function=X><parameter=Y>...</parameter></function>)
+            # inside <tool_call> tags. Handle that first.
+            func_in_tag = re.search(r'<function=([\w.-]+)>(.*)', content, re.DOTALL)
+            if func_in_tag:
+                fname = func_in_tag.group(1)
+                params_text = func_in_tag.group(2)
+                arguments = {}
+                for pmatch in re.finditer(r'<parameter=(\w+)>\s*(.*?)\s*(?:</parameter>|$)', params_text, re.DOTALL):
+                    arguments[pmatch.group(1)] = pmatch.group(2).strip()
+                if arguments:
+                    tool_calls.append({"name": fname, "arguments": arguments})
+                    log(f"  Recovered function-in-tag: {fname}")
+                else:
+                    log(f"  Warning: function-in-tag but no params: {content[:100]}")
+            else:
+                # Try general garbled recovery
+                recovered = recover_garbled_tool_json(content, text)
+                if recovered:
+                    tool_calls.append(recovered)
+                else:
+                    log(f"  Warning: unrecoverable tool_call JSON: {content[:100]}")
 
     # Format 2: <function=name><parameter=key>value</parameter>...</function>
-    pattern2 = r'<function=([\w.-]+)>(.*?)</function>'
-    for match in re.finditer(pattern2, text, re.DOTALL):
-        func_name = match.group(1)
-        params_text = match.group(2)
-        arguments = {}
-        for pmatch in re.finditer(r'<parameter=(\w+)>\s*(.*?)\s*</parameter>', params_text, re.DOTALL):
-            arguments[pmatch.group(1)] = pmatch.group(2)
-        tool_calls.append({"name": func_name, "arguments": arguments})
-        remaining = remaining.replace(match.group(0), "", 1)
+    if not tool_calls:
+        pattern2 = r'<function=([\w.-]+)>(.*?)</function>'
+        for match in re.finditer(pattern2, text, re.DOTALL):
+            func_name = match.group(1)
+            params_text = match.group(2)
+            arguments = {}
+            for pmatch in re.finditer(r'<parameter=(\w+)>\s*(.*?)\s*</parameter>', params_text, re.DOTALL):
+                arguments[pmatch.group(1)] = pmatch.group(2)
+            tool_calls.append({"name": func_name, "arguments": arguments})
+            remaining = remaining.replace(match.group(0), "", 1)
 
     # Format 3: <|tool_call|>...<|/tool_call|> (some Qwen versions)
-    pattern3 = r'<\|tool_call\|>\s*(.*?)\s*<\|/tool_call\|>'
-    for match in re.finditer(pattern3, text, re.DOTALL):
-        remaining = remaining.replace(match.group(0), "", 1)
-        try:
-            call_data = json.loads(match.group(1))
-            tool_calls.append({
-                "name": call_data.get("name", ""),
-                "arguments": call_data.get("arguments", {}),
-            })
-        except json.JSONDecodeError:
-            pass
-
-    # Format 4: Garbled — extract tool name and parameters from messy output
-    # Catches things like {"function=name> or <function=call><parameter=...>
     if not tool_calls:
-        # Try to find any MCP tool name mentioned with parameters
-        mcp_match = re.search(r'(mcp__[\w.-]+)', text)
+        pattern3 = r'<\|tool_call\|>\s*(.*?)\s*<\|/tool_call\|>'
+        for match in re.finditer(pattern3, text, re.DOTALL):
+            remaining = remaining.replace(match.group(0), "", 1)
+            try:
+                call_data = json.loads(match.group(1))
+                tool_calls.append({
+                    "name": call_data.get("name", ""),
+                    "arguments": call_data.get("arguments", {}),
+                })
+            except json.JSONDecodeError:
+                recovered = recover_garbled_tool_json(match.group(1))
+                if recovered:
+                    tool_calls.append(recovered)
+
+    # Format 4: Garbled — no tags at all, but parameter= patterns in raw text
+    if not tool_calls:
+        # Look for any tool name followed by parameter patterns
+        tool_names_pattern = r'(?:mcp__[\w.-]+|Bash|Read|Write|Edit|Glob|Grep)'
+        name_match = re.search(rf'"?name"?\s*[:=]\s*"?({tool_names_pattern})"?', text)
         param_matches = list(re.finditer(r'<parameter=(\w+)>\s*(.*?)\s*</parameter>', text, re.DOTALL))
-        if mcp_match and param_matches:
+
+        if name_match and param_matches:
             arguments = {}
             for pm in param_matches:
                 arguments[pm.group(1)] = pm.group(2)
-            tool_calls.append({"name": mcp_match.group(1), "arguments": arguments})
-            # Remove everything from the tool name onwards
-            remaining = text[:mcp_match.start()].strip()
-            log(f"  Recovered garbled tool call: {mcp_match.group(1)}")
+            tool_calls.append({"name": name_match.group(1), "arguments": arguments})
+            remaining = text[:name_match.start()].strip()
+            log(f"  Recovered tagless tool call: {name_match.group(1)}")
+        elif param_matches:
+            # We have parameters but no name — try to infer from param keys
+            arguments = {}
+            for pm in param_matches:
+                arguments[pm.group(1)] = pm.group(2)
+            if "command" in arguments:
+                tool_calls.append({"name": "Bash", "arguments": arguments})
+                log(f"  Inferred Bash tool call from 'command' parameter")
+            elif "file_path" in arguments:
+                tool_calls.append({"name": "Read", "arguments": arguments})
+                log(f"  Inferred Read tool call from 'file_path' parameter")
+            elif "pattern" in arguments:
+                tool_calls.append({"name": "Glob", "arguments": arguments})
+                log(f"  Inferred Glob tool call from 'pattern' parameter")
+            if tool_calls:
+                remaining = text[:param_matches[0].start()].strip()
 
+    # Deduplicate tool calls (model sometimes emits same call in multiple formats)
+    seen = set()
+    deduped = []
+    for tc in tool_calls:
+        key = tc["name"]
+        if key not in seen:
+            seen.add(key)
+            deduped.append(tc)
+        else:
+            log(f"  Deduped: {key}")
+    tool_calls = deduped
+
+    # Clean remaining text: strip any leftover <function=...> or <tool_call> fragments
+    remaining = re.sub(r'<function=[\w.-]+>.*?</function>', '', remaining, flags=re.DOTALL)
+    remaining = re.sub(r'</?tool_call>', '', remaining)
     remaining = remaining.strip()
+
     return tool_calls, remaining
 
 
@@ -409,7 +547,7 @@ def generate_response(body):
 
     messages = convert_messages(body)
     max_tokens = body.get("max_tokens", DEFAULT_MAX_TOKENS)
-    temperature = body.get("temperature", 0.7)
+    temperature = body.get("temperature", 0.2)
 
     if qwen_tools:
         log(f"  Tools: {len(qwen_tools)} ({', '.join(t['function']['name'] for t in qwen_tools[:5])}{'...' if len(qwen_tools) > 5 else ''})")
@@ -426,7 +564,7 @@ def generate_response(body):
     if KV_BITS:
         gen_kwargs["kv_bits"] = KV_BITS
         gen_kwargs["kv_group_size"] = 64
-        gen_kwargs["quantized_kv_start"] = 0
+        gen_kwargs["quantized_kv_start"] = KV_QUANT_START
 
     if temperature > 0:
         gen_kwargs["sampler"] = make_sampler(temp=temperature)
@@ -463,6 +601,48 @@ def generate_response(body):
 
     # Parse tool calls from Qwen's output
     tool_calls, remaining_text = parse_tool_calls(text)
+
+    # ─── Retry logic: if model expressed intent to use a tool but we got no valid calls ───
+    tool_intent_phrases = [
+        "let me", "i'll ", "i will", "let's ", "running", "executing",
+        "here's the command", "bash(", "read(", "edit(", "write(",
+    ]
+    if not tool_calls and any(p in remaining_text.lower() for p in tool_intent_phrases):
+        for retry in range(MAX_TOOL_RETRIES):
+            log(f"  Retry {retry+1}/{MAX_TOOL_RETRIES}: tool intent detected but no valid tool call, re-prompting")
+            retry_messages = messages + [
+                {"role": "assistant", "content": full_text},
+                {"role": "user", "content": (
+                    "Your previous response tried to call a tool but the format was wrong. "
+                    "Please call the tool now using EXACTLY this format:\n"
+                    '<tool_call>\n{"name": "TOOL_NAME", "arguments": {"param": "value"}}\n</tool_call>\n'
+                    "Do NOT use <parameter=...> tags inside tool_call. Use pure JSON with \"arguments\" key."
+                )}
+            ]
+            retry_tokens = tokenize_messages(retry_messages, tools=qwen_tools)
+            log(f"  Retry prompt: {len(retry_tokens)} tokens")
+
+            retry_text = ""
+            retry_gen = 0
+            with generate_lock:
+                for response in stream_generate(
+                    model=model, tokenizer=tokenizer, prompt=retry_tokens,
+                    max_tokens=max_tokens, **gen_kwargs,
+                ):
+                    retry_text += response.text
+                    retry_gen = response.generation_tokens
+
+            retry_text = clean_response(retry_text)
+            retry_calls, retry_remaining = parse_tool_calls(retry_text)
+            gen_tokens += retry_gen
+
+            if retry_calls:
+                tool_calls = retry_calls
+                # Preserve original reasoning text, not retry text
+                log(f"  Retry succeeded: {', '.join(tc['name'] for tc in retry_calls)}")
+                break
+            else:
+                log(f"  Retry {retry+1} failed, still no valid tool call")
 
     # Build content blocks
     content_blocks = []
@@ -591,7 +771,8 @@ if __name__ == "__main__":
     print()
     print(f"Serving Anthropic Messages API on http://localhost:{PORT}")
     print(f"Model: {MODEL_PATH}")
-    print(f"KV cache: {KV_BITS}-bit quantization" if KV_BITS else "KV cache: full precision")
+    print(f"KV cache: {KV_BITS}-bit quantization (start at token {KV_QUANT_START})" if KV_BITS else "KV cache: full precision")
+    print(f"Tool retry: up to {MAX_TOOL_RETRIES} retries on garbled tool calls")
     print()
     print("Claude Code config:")
     print(f"  ANTHROPIC_BASE_URL=http://localhost:{PORT}")
