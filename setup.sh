@@ -50,8 +50,8 @@ if [ "$MEM_GB" -ge 96 ]; then
   MODEL="qwen3.5:122b"
   MODEL_DESC="122B (81 GB) — full power"
 elif [ "$MEM_GB" -ge 32 ]; then
-  MODEL="qwen3.5:32b"
-  MODEL_DESC="32B (20 GB) — great coding"
+  MODEL="qwen3.5:35b"
+  MODEL_DESC="35B (20 GB) — great coding"
 else
   MODEL="qwen3.5:4b"
   MODEL_DESC="4B (3.4 GB) — lightweight"
