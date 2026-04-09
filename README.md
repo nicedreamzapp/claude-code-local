@@ -326,7 +326,7 @@ You can override defaults with environment variables:
 
 | Variable | Default | What It Does |
 |----------|---------|-------------|
-| `MLX_MODEL` | `gemma-4-31b-it-abliterated-4bit` | Pick which fighter to load |
+| `MLX_MODEL` | `divinetribe/gemma-4-31b-it-abliterated-4bit-mlx` | Pick which fighter to load |
 | `MLX_KV_BITS` | `8` | KV cache quantization bits (4 saves memory, 8 improves coherence) |
 | `MLX_KV_QUANT_START` | `1024` | Token position where KV quantization begins |
 | `MLX_TOOL_RETRIES` | `2` | Max retries when a garbled tool call is detected |
@@ -428,7 +428,7 @@ python3.12 -m venv ~/.local/mlx-server
 bash scripts/download-and-import.sh gemma   # or 'llama' or 'qwen'
 
 # 3. Start the server
-MLX_MODEL=mlx-community/gemma-4-31b-it-abliterated-4bit \
+MLX_MODEL=divinetribe/gemma-4-31b-it-abliterated-4bit-mlx \
   bash scripts/start-mlx-server.sh
 
 # 4. Launch Claude Code

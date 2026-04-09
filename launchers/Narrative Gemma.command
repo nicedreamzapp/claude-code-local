@@ -18,7 +18,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)/NarrativeGemma"
 COMBINED_PROMPT="/tmp/narrative_gemma_combined_prompt.md"
 
 # Override the model with: MLX_MODEL=<your-path-or-hf-id>
-MLX_MODEL_DEFAULT="mlx-community/gemma-4-31b-it-abliterated-4bit"
+MLX_MODEL_DEFAULT="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
 
 # ── Build combined system prompt ──────────────────────────────────────
 # --bare disables auto-memory, so we hand-stitch the narration rules into

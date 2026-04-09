@@ -58,11 +58,11 @@ if [ "$MEM_GB" -ge 96 ]; then
   MODEL_LABEL="Qwen 3.5 122B (THE BEAST — 65 tok/s)"
   MODEL_TIER="🔵 max"
 elif [ "$MEM_GB" -ge 64 ]; then
-  MODEL_ID="mlx-community/gemma-4-31b-it-abliterated-4bit"
+  MODEL_ID="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
   MODEL_LABEL="Gemma 4 31B Abliterated (THE QUICK ONE — ~15 tok/s)"
   MODEL_TIER="🟢 fast"
 elif [ "$MEM_GB" -ge 32 ]; then
-  MODEL_ID="mlx-community/gemma-4-31b-it-abliterated-4bit"
+  MODEL_ID="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
   MODEL_LABEL="Gemma 4 31B Abliterated (tight fit, may swap)"
   MODEL_TIER="🟡 squeeze"
 else

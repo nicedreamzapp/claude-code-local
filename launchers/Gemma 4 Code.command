@@ -10,7 +10,7 @@ MLX_SERVER="$HOME/.local/mlx-native-server/server.py"
 MLX_PYTHON="$HOME/.local/mlx-server/bin/python3"
 
 # Override with MLX_MODEL=<your-path-or-hf-id>
-MLX_MODEL_DEFAULT="mlx-community/gemma-4-31b-it-abliterated-4bit"
+MLX_MODEL_DEFAULT="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
 
 # Start MLX server if not running (or if a different model is loaded)
 if ! lsof -i :4000 >/dev/null 2>&1; then

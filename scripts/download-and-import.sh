@@ -29,8 +29,10 @@ case "${1:-}" in
     LABEL="Llama 3.3 70B Abliterated (THE WISE ONE — ~7 tok/s, ~75 GB disk, divinetribe/8-bit MLX)"
     ;;
   gemma|gemma31|31b|"")
-    MODEL="${MLX_MODEL:-mlx-community/gemma-4-31b-it-abliterated-4bit}"
-    LABEL="Gemma 4 31B Abliterated (THE QUICK ONE — ~15 tok/s, ~18 GB RAM)"
+    # Our own abliterated MLX upload:
+    #   https://huggingface.co/divinetribe/gemma-4-31b-it-abliterated-4bit-mlx
+    MODEL="${MLX_MODEL:-divinetribe/gemma-4-31b-it-abliterated-4bit-mlx}"
+    LABEL="Gemma 4 31B Abliterated (THE QUICK ONE — ~15 tok/s, ~18 GB RAM, divinetribe/4-bit MLX)"
     ;;
   *)
     MODEL="$1"
