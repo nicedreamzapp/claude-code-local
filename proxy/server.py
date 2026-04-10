@@ -614,7 +614,7 @@ def generate_response(body):
         "let me", "i'll ", "i will", "let's ", "running", "executing",
         "here's the command", "bash(", "read(", "edit(", "write(",
     ]
-    if not tool_calls and any(p in remaining_text.lower() for p in tool_intent_phrases):
+    if anthropic_tools and not tool_calls and any(p in remaining_text.lower() for p in tool_intent_phrases):
         for retry in range(MAX_TOOL_RETRIES):
             log(f"  Retry {retry+1}/{MAX_TOOL_RETRIES}: tool intent detected but no valid tool call, re-prompting")
             retry_messages = messages + [
@@ -695,11 +695,16 @@ def generate_response(body):
 
 def send_json(handler, status, data):
     resp = json.dumps(data).encode()
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json")
-    handler.send_header("Content-Length", len(resp))
-    handler.end_headers()
-    handler.wfile.write(resp)
+    try:
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", len(resp))
+        handler.end_headers()
+        handler.wfile.write(resp)
+        return True
+    except (BrokenPipeError, ConnectionResetError):
+        log("  Client disconnected before response write completed")
+        return False
 
 
 def get_path(full_path):
@@ -758,7 +763,12 @@ class AnthropicHandler(BaseHTTPRequestHandler):
                 ]
             })
         elif path == "/health":
-            send_json(self, 200, {"status": "ok", "model": MODEL_PATH})
+            send_json(self, 200, {
+                "status": "ok",
+                "model": MODEL_PATH,
+                "kv_bits": KV_BITS,
+                "browser_mode": BROWSER_MODE,
+            })
         else:
             send_json(self, 200, {})
 
