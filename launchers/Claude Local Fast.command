@@ -1,19 +1,19 @@
 #!/bin/bash
 set -euo pipefail
-# Claude Code — Local AI (runs on your Mac, no cloud)
-# Double-click to launch
-# MLX Native Server — direct Anthropic API, no proxy needed
-#
-# Override the model with: MLX_MODEL=mlx-community/<model-id>
+# Claude Code — Local AI (FAST mode)
+# Speed-first launcher:
+# - --bare (skip skills/plugins/hooks discovery)
+# - constrained built-in tool set
+# - Gemma 4 31B default model
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/claude-local-common.sh"
 
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
-MLX_SERVER="$HOME/.local/mlx-native-server/server.py"
-MLX_PYTHON="$HOME/.local/mlx-server/bin/python3"
-MODEL_NAME="${MLX_MODEL_LABEL:-Qwen 3.5 122B}"
-MLX_MODEL_DEFAULT="mlx-community/Qwen3.5-122B-A10B-4bit"
+MLX_SERVER="${MLX_SERVER:-$HOME/.local/mlx-native-server/server.py}"
+MLX_PYTHON="${MLX_PYTHON:-$HOME/.local/mlx-server/bin/python3}"
+MODEL_NAME="${MLX_MODEL_LABEL:-Gemma 4 31B (Fast)}"
+MLX_MODEL_DEFAULT="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
 REQUESTED_MODEL="${MLX_MODEL:-$MLX_MODEL_DEFAULT}"
 MCP_CONFIG="$(build_user_mcp_config)"
 
@@ -32,18 +32,17 @@ ensure_mlx_server "$REQUESTED_MODEL" "  Loading $MODEL_NAME on MLX..."
 
 clear
 echo ""
-echo "  → Claude Code with LOCAL AI ($MODEL_NAME)"
-echo "  → MLX Native: zero proxy, zero cloud, zero API fees"
-echo "  → Running 100% on your Apple Silicon GPU"
+echo "  -> Claude Code LOCAL FAST mode"
+echo "  -> $MODEL_NAME"
+echo "  -> bare mode + minimal tools for lower latency"
 echo ""
 
-# Preserve normal Claude Code features like skills and hooks.
-# MCP servers are extracted from the current Claude settings into a
-# schema-valid temp file for this session.
 ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
 "$CLAUDE_BIN" --model claude-sonnet-4-6 \
   --permission-mode auto \
+  --bare \
+  --tools "Bash,Read,Edit,Write,Glob,Grep,LS,MultiEdit" \
   --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
   --mcp-config "$MCP_CONFIG"
 exit $?

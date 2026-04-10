@@ -100,21 +100,34 @@ if [ ! -f "$CLAUDE_BIN" ]; then
   CLAUDE_BIN="\$HOME/.local/bin/claude"
 fi
 
+LAUNCHER_LIB="$SCRIPT_DIR/launchers/lib/claude-local-common.sh"
 LAUNCHER="$HOME/Desktop/Claude Local.command"
 cat > "$LAUNCHER" <<LAUNCH
 #!/bin/bash
+set -euo pipefail
 # Claude Code — Local AI ($MODEL_LABEL)
 CLAUDE_BIN="$CLAUDE_BIN"
 MLX_PYTHON="$MLX_VENV/bin/python3"
 MLX_SERVER="$SERVER_DIR/server.py"
+MLX_MODEL_DEFAULT="$MODEL_ID"
+LAUNCHER_LIB="$LAUNCHER_LIB"
 
-if ! lsof -i :4000 >/dev/null 2>&1; then
-  MLX_MODEL="$MODEL_ID" "\$MLX_PYTHON" "\$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
-  echo "  Loading $MODEL_LABEL on MLX..."
-  while ! curl -s http://localhost:4000/health 2>/dev/null | grep -q "ok"; do
-    sleep 2
-  done
-fi
+source "\$LAUNCHER_LIB"
+
+MCP_CONFIG="\$(build_user_mcp_config)"
+
+cleanup() {
+  cleanup_mlx_server
+  rm -f "\$MCP_CONFIG"
+}
+
+trap cleanup EXIT INT TERM
+
+require_file "\$CLAUDE_BIN" "Claude Code CLI"
+require_file "\$MLX_PYTHON" "MLX Python"
+require_file "\$MLX_SERVER" "MLX server"
+
+ensure_mlx_server "\${MLX_MODEL:-\$MLX_MODEL_DEFAULT}" "  Loading $MODEL_LABEL on MLX..."
 
 clear
 echo ""
@@ -125,7 +138,11 @@ echo ""
 
 ANTHROPIC_BASE_URL=http://localhost:4000 \\
 ANTHROPIC_API_KEY=sk-local \\
-exec "\$CLAUDE_BIN" --model claude-sonnet-4-6
+"\$CLAUDE_BIN" --model claude-sonnet-4-6 \\
+  --permission-mode auto \\
+  --append-system-prompt-file "\$HOME/.claude/CLAUDE.md" \\
+  --mcp-config "\$MCP_CONFIG"
+exit \$?
 LAUNCH
 
 chmod +x "$LAUNCHER"

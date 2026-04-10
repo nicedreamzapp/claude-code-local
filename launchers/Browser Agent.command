@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Brave Browser Agent — Direct MLX + Chrome DevTools Protocol (no Claude Code)
 # Double-click to launch
 #
@@ -8,11 +9,51 @@ MLX_PYTHON="$HOME/.local/mlx-server/bin/python3"
 MLX_SERVER="$HOME/.local/mlx-native-server/server.py"
 AGENT="$HOME/.local/browser-agent/agent.py"
 MODEL_NAME="${MLX_MODEL_LABEL:-Gemma 4 31B}"
+MLX_MODEL_DEFAULT="${MLX_MODEL:-divinetribe/gemma-4-31b-it-abliterated-4bit-mlx}"
+MLX_KV_BITS_DEFAULT="${MLX_KV_BITS:-0}"
 
-# Start MLX server if not running
+cleanup() {
+  if [ "${STARTED_MLX_SERVER:-0}" -eq 1 ] && [ -n "${MLX_SERVER_PID:-}" ]; then
+    if kill -0 "$MLX_SERVER_PID" >/dev/null 2>&1; then
+      kill "$MLX_SERVER_PID" >/dev/null 2>&1 || true
+      wait "$MLX_SERVER_PID" 2>/dev/null || true
+    fi
+  fi
+}
+
+trap cleanup EXIT INT TERM
+
+if [ ! -f "$MLX_PYTHON" ]; then
+  echo "  ERROR: MLX Python not found at $MLX_PYTHON"
+  exit 1
+fi
+
+if [ ! -f "$MLX_SERVER" ]; then
+  echo "  ERROR: MLX server not found at $MLX_SERVER"
+  exit 1
+fi
+
+if [ ! -f "$AGENT" ]; then
+  echo "  ERROR: Browser agent not found at $AGENT"
+  exit 1
+fi
+
+if lsof -i :4000 >/dev/null 2>&1; then
+  echo "  Restarting MLX server in browser mode..."
+  pkill -f "mlx-native-server/server.py" 2>/dev/null || true
+  for i in $(seq 1 20); do
+    if ! lsof -i :4000 >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+fi
+
 if ! lsof -i :4000 >/dev/null 2>&1; then
   echo "  Loading $MODEL_NAME..."
-  MLX_BROWSER_MODE=1 "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  MLX_BROWSER_MODE=1 MLX_KV_BITS="$MLX_KV_BITS_DEFAULT" MLX_MODEL="$MLX_MODEL_DEFAULT" "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  MLX_SERVER_PID=$!
+  STARTED_MLX_SERVER=1
   while ! curl -s http://localhost:4000/health 2>/dev/null | grep -q "ok"; do sleep 2; done
 fi
 
@@ -66,4 +107,5 @@ echo "  ║  iframes + Shadow DOM · 100% local            ║"
 echo "  ╚═══════════════════════════════════════════════╝"
 echo ""
 
-exec "$MLX_PYTHON" "$AGENT"
+"$MLX_PYTHON" "$AGENT"
+exit $?

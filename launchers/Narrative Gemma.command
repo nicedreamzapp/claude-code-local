@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Narrative Gemma — Local AI Claude Code with auto-narration
 # Double-click to launch
 #
@@ -11,38 +12,45 @@
 #   your speakers. Stub it with `say "$@"` (macOS built-in) if you don't
 #   have a fancier voice setup. The CLAUDE.md persona expects this binary.
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib/claude-local-common.sh"
+
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 MLX_SERVER="$HOME/.local/mlx-native-server/server.py"
 MLX_PYTHON="$HOME/.local/mlx-server/bin/python3"
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)/NarrativeGemma"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/NarrativeGemma"
 COMBINED_PROMPT="/tmp/narrative_gemma_combined_prompt.md"
+MCP_CONFIG="$(build_user_mcp_config)"
+
+cleanup() {
+  cleanup_mlx_server
+  rm -f "$MCP_CONFIG" "$COMBINED_PROMPT"
+}
+
+trap cleanup EXIT INT TERM
+
+require_file "$CLAUDE_BIN" "Claude Code CLI"
+require_file "$MLX_SERVER" "MLX server"
+require_file "$MLX_PYTHON" "MLX Python"
+require_file "$PROJECT_DIR/CLAUDE.md" "NarrativeGemma CLAUDE.md"
 
 # Override the model with: MLX_MODEL=<your-path-or-hf-id>
 MLX_MODEL_DEFAULT="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
 
 # ── Build combined system prompt ──────────────────────────────────────
-# --bare disables auto-memory, so we hand-stitch the narration rules into
-# a file that the patched MLX server appends to its mode-specific prompt.
+# Build the narration prompt into a temporary file so we can append it
+# explicitly while keeping normal Claude Code features enabled.
 {
   cat "$PROJECT_DIR/CLAUDE.md"
 } > "$COMBINED_PROMPT"
 
-# Always restart the MLX server in narrative mode so it picks up the
-# MLX_APPEND_SYSTEM_PROMPT_FILE env var. If we left a stale server
-# running from another launcher, narration rules wouldn't be loaded.
-if curl -sf http://localhost:4000/health >/dev/null 2>&1; then
-  echo "  Stopping existing MLX server to load narration rules..."
-  pkill -f "mlx-native-server/server.py" 2>/dev/null
-  sleep 2
+if lsof -i :4000 >/dev/null 2>&1; then
+  echo "  Restarting MLX server to load narration rules..."
+  pkill -f "mlx-native-server/server.py" 2>/dev/null || true
+  wait_for_mlx_server_shutdown || true
 fi
 
-export MLX_APPEND_SYSTEM_PROMPT_FILE="$COMBINED_PROMPT"
-MLX_MODEL="${MLX_MODEL:-$MLX_MODEL_DEFAULT}" \
-  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
-echo "  Loading Gemma 4 31B Abliterated with narration rules..."
-while ! curl -s http://localhost:4000/health 2>/dev/null | grep -q "ok"; do
-  sleep 2
-done
+ensure_mlx_server "${MLX_MODEL:-$MLX_MODEL_DEFAULT}" "  Loading Gemma 4 31B Abliterated with narration rules..." "MLX_APPEND_SYSTEM_PROMPT_FILE=$COMBINED_PROMPT"
 
 clear
 echo ""
@@ -61,8 +69,8 @@ cd "$PROJECT_DIR" || exit 1
 ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
 CLAUDE_SESSION_LABEL="Narrative Gemma · Local" \
-exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
+"$CLAUDE_BIN" --model claude-sonnet-4-6 \
   --permission-mode auto \
-  --bare \
   --append-system-prompt-file "$COMBINED_PROMPT" \
-  --mcp-config "$HOME/.claude.json"
+  --mcp-config "$MCP_CONFIG"
+exit $?
