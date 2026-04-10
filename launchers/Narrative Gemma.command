@@ -14,12 +14,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/claude-local-common.sh"
+PROFILE_NAME="${LAUNCHER_PROFILE:-narrative}"
+load_launcher_profile "$SCRIPT_DIR" "$PROFILE_NAME"
 
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 MLX_SERVER="$HOME/.local/mlx-native-server/server.py"
 MLX_PYTHON="$HOME/.local/mlx-server/bin/python3"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/NarrativeGemma"
 COMBINED_PROMPT="/tmp/narrative_gemma_combined_prompt.md"
+MLX_KV_BITS="${MLX_KV_BITS:-${LAUNCHER_MLX_KV_BITS_DEFAULT:-0}}"
+CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-${LAUNCHER_CLAUDE_PERMISSION_MODE_DEFAULT:-auto}}"
+MODEL_NAME="${MLX_MODEL_LABEL:-${LAUNCHER_MODEL_NAME_DEFAULT:-Narrative Gemma 4 31B}}"
 MCP_CONFIG="$(build_user_mcp_config)"
 
 cleanup() {
@@ -35,7 +40,7 @@ require_file "$MLX_PYTHON" "MLX Python"
 require_file "$PROJECT_DIR/CLAUDE.md" "NarrativeGemma CLAUDE.md"
 
 # Override the model with: MLX_MODEL=<your-path-or-hf-id>
-MLX_MODEL_DEFAULT="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
+MLX_MODEL_DEFAULT="${LAUNCHER_MLX_MODEL_DEFAULT:-divinetribe/gemma-4-31b-it-abliterated-4bit-mlx}"
 
 # ── Build combined system prompt ──────────────────────────────────────
 # Build the narration prompt into a temporary file so we can append it
@@ -50,12 +55,12 @@ if lsof -i :4000 >/dev/null 2>&1; then
   wait_for_mlx_server_shutdown || true
 fi
 
-ensure_mlx_server "${MLX_MODEL:-$MLX_MODEL_DEFAULT}" "  Loading Gemma 4 31B Abliterated with narration rules..." "MLX_APPEND_SYSTEM_PROMPT_FILE=$COMBINED_PROMPT"
+ensure_mlx_server "${MLX_MODEL:-$MLX_MODEL_DEFAULT}" "  Loading $MODEL_NAME with narration rules..." "MLX_APPEND_SYSTEM_PROMPT_FILE=$COMBINED_PROMPT"
 
 clear
 echo ""
 echo "  → NARRATIVE GEMMA — Local AI with auto-narration"
-echo "  → Gemma 4 31B Abliterated · 4-bit · ~15 tok/s"
+echo "  → $MODEL_NAME · 4-bit · ~15 tok/s"
 echo "  → Every response spoken aloud via ~/.local/bin/speak"
 echo "  → Running on Apple Silicon — no cloud, no API fees"
 echo ""
@@ -70,7 +75,7 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
 CLAUDE_SESSION_LABEL="Narrative Gemma · Local" \
 "$CLAUDE_BIN" --model claude-sonnet-4-6 \
-  --permission-mode auto \
+  --permission-mode "$CLAUDE_PERMISSION_MODE" \
   --append-system-prompt-file "$COMBINED_PROMPT" \
   --mcp-config "$MCP_CONFIG"
 exit $?

@@ -11,6 +11,13 @@ AGENT="$HOME/.local/browser-agent/agent.py"
 MODEL_NAME="${MLX_MODEL_LABEL:-Gemma 4 31B}"
 MLX_MODEL_DEFAULT="${MLX_MODEL:-divinetribe/gemma-4-31b-it-abliterated-4bit-mlx}"
 MLX_KV_BITS_DEFAULT="${MLX_KV_BITS:-0}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib/claude-local-common.sh"
+PROFILE_NAME="${LAUNCHER_PROFILE:-browser}"
+load_launcher_profile "$SCRIPT_DIR" "$PROFILE_NAME"
+MODEL_NAME="${MLX_MODEL_LABEL:-${LAUNCHER_MODEL_NAME_DEFAULT:-$MODEL_NAME}}"
+MLX_MODEL_DEFAULT="${MLX_MODEL:-${LAUNCHER_MLX_MODEL_DEFAULT:-$MLX_MODEL_DEFAULT}}"
+MLX_KV_BITS_DEFAULT="${MLX_KV_BITS:-${LAUNCHER_MLX_KV_BITS_DEFAULT:-$MLX_KV_BITS_DEFAULT}}"
 
 cleanup() {
   if [ "${STARTED_MLX_SERVER:-0}" -eq 1 ] && [ -n "${MLX_SERVER_PID:-}" ]; then

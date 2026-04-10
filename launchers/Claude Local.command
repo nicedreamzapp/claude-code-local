@@ -8,13 +8,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/claude-local-common.sh"
+PROFILE_NAME="${LAUNCHER_PROFILE:-standard}"
+load_launcher_profile "$SCRIPT_DIR" "$PROFILE_NAME"
 
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 MLX_SERVER="$HOME/.local/mlx-native-server/server.py"
 MLX_PYTHON="$HOME/.local/mlx-server/bin/python3"
-MODEL_NAME="${MLX_MODEL_LABEL:-Qwen 3.5 122B}"
-MLX_MODEL_DEFAULT="mlx-community/Qwen3.5-122B-A10B-4bit"
+MLX_KV_BITS="${MLX_KV_BITS:-${LAUNCHER_MLX_KV_BITS_DEFAULT:-0}}"
+MODEL_NAME="${MLX_MODEL_LABEL:-${LAUNCHER_MODEL_NAME_DEFAULT:-Qwen 3.5 122B}}"
+MLX_MODEL_DEFAULT="${LAUNCHER_MLX_MODEL_DEFAULT:-mlx-community/Qwen3.5-122B-A10B-4bit}"
 REQUESTED_MODEL="${MLX_MODEL:-$MLX_MODEL_DEFAULT}"
+CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-${LAUNCHER_CLAUDE_PERMISSION_MODE_DEFAULT:-auto}}"
 MCP_CONFIG="$(build_user_mcp_config)"
 
 cleanup() {
@@ -43,7 +47,7 @@ echo ""
 ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
 "$CLAUDE_BIN" --model claude-sonnet-4-6 \
-  --permission-mode auto \
+  --permission-mode "$CLAUDE_PERMISSION_MODE" \
   --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
   --mcp-config "$MCP_CONFIG"
 exit $?

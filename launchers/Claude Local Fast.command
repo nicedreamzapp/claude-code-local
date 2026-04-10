@@ -8,13 +8,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/claude-local-common.sh"
+PROFILE_NAME="${LAUNCHER_PROFILE:-fast}"
+load_launcher_profile "$SCRIPT_DIR" "$PROFILE_NAME"
 
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 MLX_SERVER="${MLX_SERVER:-$HOME/.local/mlx-native-server/server.py}"
 MLX_PYTHON="${MLX_PYTHON:-$HOME/.local/mlx-server/bin/python3}"
-MODEL_NAME="${MLX_MODEL_LABEL:-Gemma 4 31B (Fast)}"
-MLX_MODEL_DEFAULT="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
+MLX_KV_BITS="${MLX_KV_BITS:-${LAUNCHER_MLX_KV_BITS_DEFAULT:-0}}"
+MODEL_NAME="${MLX_MODEL_LABEL:-${LAUNCHER_MODEL_NAME_DEFAULT:-Gemma 4 31B (Fast)}}"
+MLX_MODEL_DEFAULT="${LAUNCHER_MLX_MODEL_DEFAULT:-divinetribe/gemma-4-31b-it-abliterated-4bit-mlx}"
 REQUESTED_MODEL="${MLX_MODEL:-$MLX_MODEL_DEFAULT}"
+CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-${LAUNCHER_CLAUDE_PERMISSION_MODE_DEFAULT:-auto}}"
+CLAUDE_USE_BARE="${CLAUDE_USE_BARE:-${LAUNCHER_CLAUDE_BARE_DEFAULT:-1}}"
+CLAUDE_TOOLS="${CLAUDE_TOOLS:-${LAUNCHER_CLAUDE_TOOLS_DEFAULT:-Bash,Read,Edit,Write,Glob,Grep,LS,MultiEdit}}"
 MCP_CONFIG="$(build_user_mcp_config)"
 
 cleanup() {
@@ -39,10 +45,18 @@ echo ""
 
 ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
-"$CLAUDE_BIN" --model claude-sonnet-4-6 \
-  --permission-mode auto \
-  --bare \
-  --tools "Bash,Read,Edit,Write,Glob,Grep,LS,MultiEdit" \
-  --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
-  --mcp-config "$MCP_CONFIG"
+if [ "$CLAUDE_USE_BARE" = "1" ]; then
+  "$CLAUDE_BIN" --model claude-sonnet-4-6 \
+    --permission-mode "$CLAUDE_PERMISSION_MODE" \
+    --bare \
+    --tools "$CLAUDE_TOOLS" \
+    --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
+    --mcp-config "$MCP_CONFIG"
+else
+  "$CLAUDE_BIN" --model claude-sonnet-4-6 \
+    --permission-mode "$CLAUDE_PERMISSION_MODE" \
+    --tools "$CLAUDE_TOOLS" \
+    --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
+    --mcp-config "$MCP_CONFIG"
+fi
 exit $?

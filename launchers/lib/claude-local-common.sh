@@ -3,6 +3,17 @@
 STARTED_MLX_SERVER=0
 MLX_SERVER_PID=""
 
+load_launcher_profile() {
+  local script_dir="$1"
+  local profile_name="${2:-standard}"
+  local profile_file="$script_dir/profiles/${profile_name}.env"
+
+  if [ -f "$profile_file" ]; then
+    # shellcheck disable=SC1090
+    source "$profile_file"
+  fi
+}
+
 require_file() {
   local path="$1"
   local label="$2"
