@@ -56,13 +56,21 @@ def log(msg):
 # ─── Model Loading ───────────────────────────────────────────────────────────
 
 def load_model():
-    global model, tokenizer
+    global model, tokenizer, KV_BITS
     log(f"Loading model: {MODEL_PATH}")
     t0 = time.time()
     model, tokenizer = load(MODEL_PATH)
     mx.eval(model.parameters())
     elapsed = time.time() - t0
     log(f"Model loaded in {elapsed:.1f}s")
+
+    # Gemma uses sliding-window attention → RotatingKVCache, which mlx-lm
+    # can't quantize yet ("RotatingKVCache Quantization NYI"). Auto-disable
+    # KV quantization for Gemma so inference doesn't 500 on the first call.
+    if KV_BITS and "gemma" in MODEL_PATH.lower():
+        log("Gemma detected: disabling KV cache quantization (RotatingKVCache NYI)")
+        KV_BITS = 0
+
     log(f"KV cache quantization: {KV_BITS}-bit" if KV_BITS else "KV cache: full precision")
 
 
