@@ -611,8 +611,25 @@ BROWSER_TOOLS_ALLOW = {
     "mcp__chrome-devtools__list_pages",
 }
 
+def looks_like_claude_code_browser_session(body):
+    """A real Claude Code MCP browser session registers chrome-devtools tools.
+    Direct clients (like ~/.local/browser-agent) bring their own system prompt
+    and zero tools — we must NOT clobber those, or the model will call tools
+    that don't exist on the client side."""
+    tools = body.get("tools", [])
+    return any(t.get("name", "") in BROWSER_TOOLS_ALLOW for t in tools)
+
+
 def optimize_for_browser(body):
-    """Strip Claude Code bloat: replace system prompt, keep only essential MCP tools."""
+    """Strip Claude Code bloat: replace system prompt, keep only essential MCP tools.
+
+    Only fires for actual Claude Code MCP browser sessions. Direct clients that
+    bring their own system prompt + tool contract are passed through untouched.
+    """
+    if not looks_like_claude_code_browser_session(body):
+        log("  Browser mode: passthrough (direct client, not Claude Code MCP)")
+        return body
+
     # Replace massive system prompt with compact browser prompt
     body["system"] = BROWSER_SYSTEM_PROMPT
 
