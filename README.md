@@ -725,20 +725,11 @@ We didn't start here. We went through three generations in one night:
 
 `claude-code-local` is the **brain** — the MLX Anthropic server, the launcher lineup, the tool-call translation layer. For the full ambient-computing experience, it pairs with two sibling projects that handle the other parts of the loop. Each repo stands alone; together they form a **local-first ambient computing stack** that never sends a keystroke, a voice clip, or a page load to the cloud.
 
-```
-      🎤 NarrateClaude         🤖 claude-code-local          🌐 browser-agent
-      ─────────────────        ────────────────────         ──────────────────
-      EARS + MOUTH             BRAIN (this repo)            HANDS
-      ─────────────────        ────────────────────         ──────────────────
-      Apple SFSpeech     →     MLX + Gemma / Llama     →    Chrome DevTools
-      continuous listener      Anthropic API server         iframes + Shadow DOM
-      AppleScript inject       Tool-call parser (×3)        Brave browser control
-      cloned-voice TTS         Code mode, prompt cache      Snapshot + click + type
-      ─────────────────        ────────────────────         ──────────────────
-      🔗 github.com/           🔗 github.com/                🔗 github.com/
-      nicedreamzapp/           nicedreamzapp/                nicedreamzapp/
-      NarrateClaude            claude-code-local             browser-agent
-```
+| | 🎤 **NarrateClaude** | 🤖 **claude-code-local** *(this repo)* | 🌐 **browser-agent** |
+|---|:---:|:---:|:---:|
+| **Role** | Ears + Mouth | Brain | Hands |
+| **Tech** | Apple SFSpeech · AppleScript inject · cloned-voice TTS | MLX + Gemma / Llama / Qwen · Anthropic API server · tool-call parser (×3) · code mode · prompt cache | Chrome DevTools Protocol · iframes + Shadow DOM · Brave control · snapshot + click + type |
+| **Repo** | [nicedreamzapp/NarrateClaude](https://github.com/nicedreamzapp/NarrateClaude) | [nicedreamzapp/claude-code-local](https://github.com/nicedreamzapp/claude-code-local) | [nicedreamzapp/browser-agent](https://github.com/nicedreamzapp/browser-agent) |
 
 | Want to… | Clone… |
 |---|---|
