@@ -15,7 +15,7 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/📜_License-MIT-yellow?style=for-the-badge" alt="MIT"></a>
   </p>
   <p align="center">
-    <em>Built in Arcata, CA by <a href="https://x.com/divinetribevape">Matt Macosko</a> — 13 years making hardware, first time building AI in public.</em>
+    <em>Built by <a href="https://x.com/divinetribevape">Matt Macosko</a> in Arcata, CA. Started with a chicken problem. Still figuring it out.</em>
   </p>
   <p align="center">
     <a href="#-watch-the-demo--airgap-ai">🎬 Demo</a> ·
