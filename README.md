@@ -58,7 +58,7 @@
   </p>
   <p align="center">
     <!-- MATT: swap this mailto for a Calendly/landing page URL when you have one -->
-    <a href="mailto:matt@ineedhemp.com?subject=AirGap%20AI%20for%20our%20firm&body=Hi%20Matt%2C%0A%0AWe%20saw%20the%20AirGap%20AI%20demo%20and%20want%20to%20talk%20about%20running%20it%20at%20our%20firm.%0A%0AFirm%20name%3A%0ASize%3A%0ARegulatory%20environment%20(HIPAA%2FSOC2%2Flegal%2Fother)%3A%0A%0AThanks%2C">
+    <a href="mailto:info@nicedreamzwholesale.com?subject=AirGap%20AI%20for%20our%20firm&body=Hi%2C%0A%0AWe%20saw%20the%20AirGap%20AI%20demo%20and%20want%20to%20talk%20about%20running%20it%20at%20our%20firm.%0A%0AFirm%20name%3A%0ASize%3A%0ARegulatory%20environment%20(HIPAA%2FSOC2%2Flegal%2Fother)%3A%0A%0AThanks%2C">
       <img src="https://img.shields.io/badge/📞_Need_this_for_your_firm%3F-Book_a_15--min_call-black?style=for-the-badge" alt="Book a call">
     </a>
   </p>
