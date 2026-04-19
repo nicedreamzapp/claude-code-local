@@ -86,31 +86,18 @@
 
 We started with one model. Now we ship a **roster**. Same MLX server, same Anthropic API, swap one env var and you swap the brain.
 
-```
-   ╔══════════════════════╦═══════════════════════╦══════════════════════╗
-   ║  🟢 GEMMA 4 31B      ║   🟠 LLAMA 3.3 70B    ║  🔵 QWEN 3.5 122B    ║
-   ║   ABLITERATED        ║    ABLITERATED        ║    A10B MoE          ║
-   ║  ──────────────────  ║  ───────────────────  ║  ──────────────────  ║
-   ║   THE QUICK ONE      ║    THE WISE ONE       ║    THE BEAST         ║
-   ║                      ║                       ║                      ║
-   ║  Speed   ~15 tok/s   ║  Speed   ~7 tok/s     ║  Speed  65 tok/s 🚀  ║
-   ║  Params  31 B dense  ║  Params  71 B dense   ║  Params 122 B / 10B  ║
-   ║  Quant   4-bit IT    ║  Quant   8-bit affine ║  Quant  4-bit MoE    ║
-   ║  RAM     ~18 GB      ║  RAM     ~75 GB       ║  RAM    ~75 GB       ║
-   ║  Disk    18 GB       ║  Disk    75 GB        ║  Disk   65 GB        ║
-   ║                      ║                       ║                      ║
-   ║                      ║  ⭐ Uploaded by us!    ║                      ║
-   ║                      ║                       ║                      ║
-   ║  🎯 Daily coding     ║  🎯 Hardest reasoning ║  🎯 Max throughput   ║
-   ║  💪 Fits 64 GB Mac   ║  💪 Full precision    ║  💪 Active sparsity  ║
-   ╚══════════════════════╩═══════════════════════╩══════════════════════╝
-```
-
-| Pick This Model | If You Want… | Min RAM | Launcher |
-|---|---|:---:|---|
-| 🟢 **Gemma 4 31B** | Daily coding, low RAM, fast loop | 32 GB | `Gemma 4 Code.command` |
-| 🟠 **Llama 3.3 70B** ⭐ | Hardest reasoning at full 8-bit precision | 96 GB | `Llama 70B.command` |
-| 🔵 **Qwen 3.5 122B** | Max tok/s, biggest brain | 96 GB | `Claude Local.command` |
+| | 🟢 **Gemma 4 31B** | 🟠 **Llama 3.3 70B** ⭐ | 🔵 **Qwen 3.5 122B** |
+|---|:---:|:---:|:---:|
+| Nickname | The Quick One | The Wise One | The Beast |
+| Build | 4-bit IT abliterated | 8-bit affine abliterated | 4-bit MoE (A10B) |
+| Speed | ~15 tok/s | ~7 tok/s | **65 tok/s** 🚀 |
+| Params | 31 B dense | 71 B dense | 122 B / 10 B active |
+| RAM | ~18 GB | ~75 GB | ~75 GB |
+| Disk | 18 GB | 75 GB | 65 GB |
+| Best at | Daily coding, fits 64 GB Mac | Hardest reasoning, full precision | Max throughput, active sparsity |
+| Uploaded by us? | — | ⭐ Yes (HF) | — |
+| Launcher | `Gemma 4 Code.command` | `Llama 70B.command` | `Claude Local.command` |
+| Min RAM to run | 32 GB | 96 GB | 96 GB |
 
 > 💡 **Fun fact:** Qwen wins raw speed because it's an MoE — only 10B of 122B params activate per token. Llama 70B is the slowest *and* the smartest because it's full-precision dense weights. Gemma is the lightweight champ that fits where the others can't.
 
@@ -140,27 +127,6 @@ MLX_MODEL=divinetribe/Llama-3.3-70B-Instruct-abliterated-8bit-mlx \
 ## 🎮 The Modes
 
 Four ways to run the lineup. Each one is a double-clickable launcher in `launchers/`.
-
-```
-   ┌─────────────────────────────┬─────────────────────────────┐
-   │  🤖 CODE MODE               │  🌐 BROWSER MODE             │
-   │  ──────────                 │  ─────────────               │
-   │  Full Claude Code + local   │  Autonomous Brave agent      │
-   │  model. Same UX, no cloud.  │  via Chrome DevTools         │
-   │  → Claude Local.command     │  Protocol. Clicks, types,    │
-   │  → Gemma 4 Code.command     │  navigates iframes & Shadow  │
-   │  → Llama 70B.command        │  DOM with 0 cloud calls.     │
-   │                             │  → Browser Agent.command     │
-   ├─────────────────────────────┼─────────────────────────────┤
-   │  🎤 HANDS-FREE VOICE        │  📱 PHONE MODE               │
-   │  ─────────────              │  ────────────                │
-   │  Speak a question, hear     │  Text from your couch.       │
-   │  the reply in your own      │  iMessage in, code/video     │
-   │  cloned voice. STT + TTS    │  out. Full screen-record +   │
-   │  both 100% on-device.       │  send-back pipeline.         │
-   │  → Narrative Gemma.command  │  → ~/.claude/imessage-*.sh   │
-   └─────────────────────────────┴─────────────────────────────┘
-```
 
 | Mode | What it does | Launcher |
 |---|---|---|
