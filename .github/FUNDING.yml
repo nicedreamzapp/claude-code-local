@@ -1,0 +1,6 @@
+# Matt: to enable GitHub Sponsors, go to https://github.com/sponsors/accounts,
+# set up your Sponsors profile, then uncomment the next line.
+# github: nicedreamzapp
+
+# Safe default — points at the existing nicedreamzwholesale software page.
+custom: ['https://nicedreamzwholesale.com/software/']

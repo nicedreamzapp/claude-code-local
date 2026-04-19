@@ -7,12 +7,27 @@
     <a href="https://github.com/nicedreamzapp/claude-code-local/stargazers"><img src="https://img.shields.io/github/stars/nicedreamzapp/claude-code-local?style=for-the-badge&logo=github&color=f5c542&labelColor=1f2328" alt="GitHub stars"></a>
     <a href="#-the-lineup--pick-your-fighter"><img src="https://img.shields.io/badge/🥊_Lineup-3_Models-red?style=for-the-badge" alt="3 Models"></a>
     <a href="#-the-modes"><img src="https://img.shields.io/badge/🎮_Modes-4-purple?style=for-the-badge" alt="4 Modes"></a>
-    <a href="#-benchmarks"><img src="https://img.shields.io/badge/⚡_Top_Speed-65_tok%2Fs-brightgreen?style=for-the-badge" alt="Speed"></a>
-    <a href="#-benchmarks"><img src="https://img.shields.io/badge/🚀_Claude_Code-17.6s_per_task-blue?style=for-the-badge" alt="Claude Code"></a>
+    <a href="#-benchmarks"><img src="https://img.shields.io/badge/⚡_Qwen_3.5-65_tok%2Fs-brightgreen?style=for-the-badge" alt="Qwen 3.5 speed"></a>
+    <a href="#-benchmarks"><img src="https://img.shields.io/badge/🚀_Claude_Code_Task-17.6s_(Qwen)-blue?style=for-the-badge" alt="Claude Code task time"></a>
     <a href="#-safety--how-the-data-flows"><img src="https://img.shields.io/badge/🔒_Privacy-100%25_Local-success?style=for-the-badge" alt="100% Local"></a>
     <a href="#-hands-free-voice-mode--the-whole-loop-on-device"><img src="https://img.shields.io/badge/🎤_Voice-Hands_Free-orange?style=for-the-badge" alt="Hands-Free Voice"></a>
     <a href="#-the-complete-local-first-stack"><img src="https://img.shields.io/badge/🪴_Ambient-Computing-ff69b4?style=for-the-badge" alt="Ambient Computing"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/📜_License-MIT-yellow?style=for-the-badge" alt="MIT"></a>
+  </p>
+  <p align="center">
+    <em>Built in Arcata, CA by <a href="https://x.com/divinetribevape">Matt Macosko</a> — 13 years making hardware, first time building AI in public.</em>
+  </p>
+  <p align="center">
+    <a href="#-watch-the-demo--airgap-ai">🎬 Demo</a> ·
+    <a href="#-the-lineup--pick-your-fighter">🥊 Lineup</a> ·
+    <a href="#-the-modes">🎮 Modes</a> ·
+    <a href="#-quick-start-3-commands">🚀 Quick Start</a> ·
+    <a href="#-benchmarks">📊 Benchmarks</a> ·
+    <a href="#-safety--how-the-data-flows">🔒 Safety</a> ·
+    <a href="#-hands-free-voice-mode--the-whole-loop-on-device">🎤 Voice</a> ·
+    <a href="#-the-complete-local-first-stack">🧩 The Stack</a> ·
+    <a href="#-whats-next">🛣️ Roadmap</a> ·
+    <a href="#-contributing--ideas">🤝 Contribute</a>
   </p>
 </p>
 
@@ -40,6 +55,12 @@
   </p>
   <p align="center">
     <em>Built for lawyers, accountants, doctors, therapists, contractors — anyone handling other people's private stuff.</em>
+  </p>
+  <p align="center">
+    <!-- MATT: swap this mailto for a Calendly/landing page URL when you have one -->
+    <a href="mailto:matt@ineedhemp.com?subject=AirGap%20AI%20for%20our%20firm&body=Hi%20Matt%2C%0A%0AWe%20saw%20the%20AirGap%20AI%20demo%20and%20want%20to%20talk%20about%20running%20it%20at%20our%20firm.%0A%0AFirm%20name%3A%0ASize%3A%0ARegulatory%20environment%20(HIPAA%2FSOC2%2Flegal%2Fother)%3A%0A%0AThanks%2C">
+      <img src="https://img.shields.io/badge/📞_Need_this_for_your_firm%3F-Book_a_15--min_call-black?style=for-the-badge" alt="Book a call">
+    </a>
   </p>
 </p>
 
@@ -726,7 +747,7 @@ We didn't start here. We went through three generations in one night:
 | 1️⃣ | Ollama + custom proxy | 30 tok/s | Ollama works but Claude Code can't talk to it directly |
 | 2️⃣ | llama.cpp TurboQuant + proxy | 41 tok/s | TurboQuant compresses KV cache 4.9x, but the proxy is the bottleneck |
 | 3️⃣ | **MLX native server** | **65 tok/s** | **Kill the proxy. Speak Anthropic API directly. 7.5x faster.** |
-| 4️⃣ | **The lineup** | varies | One server, three brains. Pick your fighter. |
+| 4️⃣ | **The lineup** | 65 / 15 / 7 tok/s | Three brains, one server. Same MLX, same Anthropic API — swap one env var to change the fighter. |
 
 > 🎯 Each generation taught us something. Killing the proxy made it fast. Adding the lineup made it flexible.
 
@@ -763,6 +784,20 @@ We didn't start here. We went through three generations in one night:
 The real goal isn't "a faster Claude Code" — it's **getting off screens and mice**. Hunched-over-screen computing is breaking our bodies: carpal tunnel, curved spines, $1500 ergonomic chairs bought to patch the damage the rest of the desk is doing. That era is ending. These three repos are pieces of what comes next — **computing that's around you instead of in front of you**. Screens become optional, typing becomes optional, sitting still becomes optional, but your data and your voice never leave your house.
 
 👉 **For the full manifesto, see the "[Why I Built This — Ambient Computing Starts Here](https://github.com/nicedreamzapp/NarrateClaude#-why-i-built-this--ambient-computing-starts-here)" section in the NarrateClaude README.** That's where the philosophy lives; the repos are just the first implementations.
+
+---
+
+## 🛣️ What's Next
+
+We ship fast and in public. Rough direction for the next few weeks — if any of these excite you, hit **Watch** (top-right of the repo) to get the release ping.
+
+- 🟡 **Full Qwen 3.5 122B benchmark suite** — reliability, tool-call pass rate, cold-start vs warm, long-context behavior vs Gemma
+- 🟡 **Fully-local Whisper fallback** — drop-in alternative to the Apple `SFSpeechRecognizer` path for older Macs and non-English voices
+- 🟡 **One-click DMG installer** — double-click-to-run setup for folks who just want Claude Code + local AI without a terminal
+- 🟡 **`MLX_MODEL=<hf-url>`** — point at any HuggingFace repo and have the lineup auto-register a new fighter
+- 🟡 **More fighters** — open to PRs adding launchers for DeepSeek, Mistral, Phi, anything MLX-compatible
+
+> 💡 Want something that's not on this list? [**Open an issue →**](https://github.com/nicedreamzapp/claude-code-local/issues/new). Every serious request gets read and usually replied to within 24h.
 
 ---
 
