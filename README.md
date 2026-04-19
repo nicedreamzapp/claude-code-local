@@ -68,13 +68,16 @@
 
 > ## 🧩 You're looking at the **BRAIN** of a three-repo local-first ambient-computing stack
 >
-> Pair it with its sibling repos for the full experience:
+> Three repos, one Mac. Pair them for the full experience:
 >
-> | 🤖 **THIS REPO** | 🎤 **NarrateClaude** | 🌐 **browser-agent** |
-> |:---:|:---:|:---:|
-> | **BRAIN** | **EARS + MOUTH** | **HANDS** |
-> | Runs local AI (Gemma / Llama / Qwen) + Claude Code | Talk to it, hear it in your cloned voice — 100% on-device | Drives a real Brave browser via Chrome DevTools |
-> | *You are here* 👈 | 🔗 [**github.com/nicedreamzapp/NarrateClaude**](https://github.com/nicedreamzapp/NarrateClaude) | 🔗 [**github.com/nicedreamzapp/browser-agent**](https://github.com/nicedreamzapp/browser-agent) |
+> **🤖 BRAIN · `claude-code-local`** *(this repo — you are here 👈)*
+> Runs local AI (Gemma / Llama / Qwen) + Claude Code, fully on-device.
+>
+> **🎤 EARS + MOUTH · [`NarrateClaude`](https://github.com/nicedreamzapp/NarrateClaude)**
+> Talk to it, hear replies in your cloned voice — both directions on-device.
+>
+> **🌐 HANDS · [`browser-agent`](https://github.com/nicedreamzapp/browser-agent)**
+> Drives a real Brave browser via Chrome DevTools Protocol — handles iframes, Shadow DOM, ProseMirror.
 >
 > 👉 **[See how all three fit together below](#-the-complete-local-first-stack)**
 >
@@ -250,24 +253,23 @@ Three generations of optimization. Each one got faster.
 
 ### ⚡ Speed Comparison
 
-```
-                         Tokens per Second
-  🐌 Ollama (Gen 1)      ██████████████████████████████ 30 tok/s
-  🏃 llama.cpp (Gen 2)   █████████████████████████████████████████ 41 tok/s
-  🚀 MLX Native (Gen 3)  ████████████████████████████████████████████████████████████████ 65 tok/s
-```
+| Generation | Approach | Speed |
+|---|---|---:|
+| 🐌 Gen 1 | Ollama | 30 tok/s |
+| 🏃 Gen 2 | llama.cpp | 41 tok/s |
+| 🚀 Gen 3 | **MLX Native (ours)** | **65 tok/s** |
 
 ### ⏱️ Real-World Claude Code Task
 
 How long to ask Claude Code to write a function:
 
-```
-  😴 Ollama + Proxy          ████████████████████████████████████████████ 133 seconds
-  😐 llama.cpp + Proxy       ████████████████████████████████████████████ 133 seconds
-  🔥 MLX Native (no proxy)   ██████ 17.6 seconds
+| Setup | Time |
+|---|---:|
+| 😴 Ollama + Proxy | 133 s |
+| 😐 llama.cpp + Proxy | 133 s |
+| 🔥 **MLX Native (no proxy)** | **17.6 s** |
 
-                              7.5x faster ⚡
-```
+> **7.5× faster ⚡** — one change (killing the proxy) produced the entire delta.
 
 ### 📋 Three-Generation Side-by-Side
 
