@@ -65,37 +65,21 @@
 
 ---
 
-### 🎬 More demos on the channel
-
-<table>
-<tr>
-<td width="50%" align="center">
-
-<a href="https://www.youtube.com/watch?v=4ETqEjjopUk"><img src="https://img.youtube.com/vi/4ETqEjjopUk/maxresdefault.jpg" width="100%" alt="NarrateClaude Hands-Free Ambient AI"></a>
-
-**🎤 NarrateClaude — Hands-Free Ambient AI**
-
-Speak to Claude Code, hear replies in a cloned voice — 100% on-device. 2:31.
-
-<a href="https://www.youtube.com/watch?v=4ETqEjjopUk"><img src="https://img.shields.io/badge/▶_Watch-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="Watch"></a>
-
-</td>
-<td width="50%" align="center">
-
-<a href="https://www.youtube.com/watch?v=FWTzlH3f540"><img src="https://img.youtube.com/vi/FWTzlH3f540/maxresdefault.jpg" width="100%" alt="Claude Code Controls My Mac"></a>
-
-**🕹️ Claude Code Controls My Mac**
-
-Web search, browser, voice clone — all hands-free, all local. 3:44.
-
-<a href="https://www.youtube.com/watch?v=FWTzlH3f540"><img src="https://img.shields.io/badge/▶_Watch-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="Watch"></a>
-
-</td>
-</tr>
-</table>
-
 <p align="center">
-  <a href="https://www.youtube.com/@nicedreamzapps"><img src="https://img.shields.io/badge/Subscribe_for_more-@nicedreamzapps-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Subscribe"></a>
+  <h3 align="center">🎤 Also on the channel — NarrateClaude (Hands-Free Ambient AI)</h3>
+  <p align="center">
+    <em>Speak to Claude Code, hear replies in a cloned voice — 100% on-device. 2:31.</em>
+  </p>
+  <p align="center">
+    <a href="https://www.youtube.com/watch?v=4ETqEjjopUk">
+      <img src="https://img.youtube.com/vi/4ETqEjjopUk/maxresdefault.jpg" width="540" alt="NarrateClaude Hands-Free Ambient AI Demo">
+    </a>
+  </p>
+  <p align="center">
+    <a href="https://www.youtube.com/watch?v=4ETqEjjopUk"><img src="https://img.shields.io/badge/▶_Watch_on_YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch"></a>
+    &nbsp;
+    <a href="https://www.youtube.com/@nicedreamzapps"><img src="https://img.shields.io/badge/Subscribe-@nicedreamzapps-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Subscribe"></a>
+  </p>
 </p>
 
 ---
