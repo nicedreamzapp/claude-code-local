@@ -57,11 +57,45 @@
     <em>Built for lawyers, accountants, doctors, therapists, contractors — anyone handling other people's private stuff.</em>
   </p>
   <p align="center">
-    <!-- MATT: swap this mailto for a Calendly/landing page URL when you have one -->
-    <a href="mailto:info@nicedreamzwholesale.com?subject=AirGap%20AI%20for%20our%20firm&body=Hi%2C%0A%0AWe%20saw%20the%20AirGap%20AI%20demo%20and%20want%20to%20talk%20about%20running%20it%20at%20our%20firm.%0A%0AFirm%20name%3A%0ASize%3A%0ARegulatory%20environment%20(HIPAA%2FSOC2%2Flegal%2Fother)%3A%0A%0AThanks%2C">
+    <a href="https://nicedreamzwholesale.com/airgap/">
       <img src="https://img.shields.io/badge/📞_Need_this_for_your_firm%3F-Book_a_15--min_call-black?style=for-the-badge" alt="Book a call">
     </a>
   </p>
+</p>
+
+---
+
+### 🎬 More demos on the channel
+
+<table>
+<tr>
+<td width="50%" align="center">
+
+<a href="https://www.youtube.com/watch?v=4ETqEjjopUk"><img src="https://img.youtube.com/vi/4ETqEjjopUk/maxresdefault.jpg" width="100%" alt="NarrateClaude Hands-Free Ambient AI"></a>
+
+**🎤 NarrateClaude — Hands-Free Ambient AI**
+
+Speak to Claude Code, hear replies in a cloned voice — 100% on-device. 2:31.
+
+<a href="https://www.youtube.com/watch?v=4ETqEjjopUk"><img src="https://img.shields.io/badge/▶_Watch-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="Watch"></a>
+
+</td>
+<td width="50%" align="center">
+
+<a href="https://www.youtube.com/watch?v=FWTzlH3f540"><img src="https://img.youtube.com/vi/FWTzlH3f540/maxresdefault.jpg" width="100%" alt="Claude Code Controls My Mac"></a>
+
+**🕹️ Claude Code Controls My Mac**
+
+Web search, browser, voice clone — all hands-free, all local. 3:44.
+
+<a href="https://www.youtube.com/watch?v=FWTzlH3f540"><img src="https://img.shields.io/badge/▶_Watch-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="Watch"></a>
+
+</td>
+</tr>
+</table>
+
+<p align="center">
+  <a href="https://www.youtube.com/@nicedreamzapps"><img src="https://img.shields.io/badge/Subscribe_for_more-@nicedreamzapps-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Subscribe"></a>
 </p>
 
 ---
