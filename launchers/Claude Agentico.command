@@ -7,6 +7,9 @@
 #     (small models can't handle the two-call thinking → answer flow)
 #   - applies the macOS keychain auth workaround so ANTHROPIC_API_KEY is
 #     actually honored in interactive mode
+#   - disables non-essential traffic so the CLI does not reach out to
+#     api.anthropic.com on startup (telemetry, statsig, marketplace,
+#     autoupdater). Without this, "100% offline" is not actually offline.
 #
 # Why Qwen 2.5 Coder 14B 4-bit MLX:
 #   - 7.8 GB weights → fits in 16 GB unified memory without swapping
@@ -45,6 +48,10 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
 ANTHROPIC_AUTH_TOKEN=sk-local \
 DISABLE_LOGIN_COMMAND=1 \
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+DISABLE_AUTOUPDATER=1 \
+CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1 \
+CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 \
 CLAUDE_SESSION_LABEL="Local Agentic" \
 exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
   --effort low \

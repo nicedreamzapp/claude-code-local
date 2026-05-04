@@ -6,12 +6,13 @@ de memoria unificada** - hardware abaixo do alvo original do projeto
 (M Max / Ultra com 64-128 GB).
 
 A documentacao oficial do repositorio assume Mac Max/Ultra. Em hardware
-mais modesto, quatro problemas reproduziveis aparecem em sequencia:
+mais modesto, cinco problemas reproduziveis aparecem em sequencia:
 
 1. Tela de selecao de login do Claude Code mesmo com `ANTHROPIC_API_KEY` setado
 2. Vazamento de tokens internos do modelo (`<|im_end|>`, `<|endoftext|>`, ...) na resposta
 3. Respostas vazias ("(No output)") em todas as mensagens
 4. Tool-calls do Qwen 2.5 nao reconhecidos pelo parser do servidor
+5. Claude Code chama `api.anthropic.com` no startup mesmo com `ANTHROPIC_BASE_URL` setado (vazamento de "100% offline")
 
 Este guia explica a causa de cada um e a correcao aplicada nesta branch.
 
@@ -190,6 +191,108 @@ for match in re.finditer(pattern_qwen25, text, re.DOTALL):
 ```
 
 Validado com `Bash({"command":"pwd"})` retornando `stop_reason: tool_use`.
+
+---
+
+## 5. Vazamento "100% offline" - Claude Code chama api.anthropic.com no startup
+
+Esta foi a descoberta mais grave durante a investigacao desta branch e
+nao tem nenhuma mencao no README do upstream.
+
+### Sintoma
+
+Apos aplicar todos os fixes anteriores, ao rodar:
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:4000 \
+ANTHROPIC_API_KEY=sk-local \
+claude --print --tools "" "Hi"
+```
+
+O processo trava por minutos sem qualquer chamada chegar ao servidor
+MLX local. Inspecionando com `lsof -p $PID`:
+
+```
+claude  25331  TCP mac:63057->160.79.104.10:https (ESTABLISHED)
+```
+
+O IP `160.79.104.10` resolve para **Anthropic, PBC** (whois confirma) e
+e o IP de `api.anthropic.com`. Ou seja, **mesmo com `ANTHROPIC_BASE_URL`
+apontando para localhost:4000, o Claude Code abre conexao HTTPS para o
+servidor real da Anthropic na inicializacao.**
+
+Isso e um vazamento serio para qualquer pessoa que pensa estar rodando
+"100% offline" - codigo, prompts e telemetria estao saindo da maquina
+mesmo com o setup local funcionando.
+
+### Causa
+
+O Claude Code 2.1.x dispara, na inicializacao, uma serie de chamadas
+"nao essenciais" antes de processar o prompt do usuario:
+
+- Telemetria (`tengu_*` events)
+- Feature flags via Statsig
+- Auto-install do marketplace oficial de plugins
+- Verificacao de auto-updater
+- Background tasks scheduling
+
+Todas essas chamadas vao para `api.anthropic.com` e `events.statsig.com`
+diretamente, sem passar pelo `ANTHROPIC_BASE_URL`. Isso esta confirmado
+nas strings do binario:
+
+```
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
+CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL
+DISABLE_AUTOUPDATER
+CLAUDE_CODE_DISABLE_BACKGROUND_TASKS
+```
+
+### Correcao
+
+Exportar as quatro variaveis de ambiente nos launchers:
+
+```bash
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+DISABLE_AUTOUPDATER=1
+CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1
+CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
+```
+
+Com `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` confirmamos via
+`lsof -p $CLAUDE_PID` que **nenhuma** conexao TCP sai para o IP
+160.79.104.10 - o claude conecta exclusivamente em `localhost:4000`
+(o servidor MLX desta branch).
+
+### Validacao
+
+Apos os fixes, rodando:
+
+```bash
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+ANTHROPIC_BASE_URL=http://localhost:4000 \
+ANTHROPIC_API_KEY=sk-local \
+ANTHROPIC_AUTH_TOKEN=sk-local \
+claude --print --tools "" --effort low "Hi" </dev/null
+```
+
+Saida obtida:
+
+```
+Hello! How can I assist you today?
+```
+
+Servidor MLX (`/tmp/mlx-server.log`):
+
+```
+[21:31:07]   Generated: 10 tokens in 63.4s (0.2 tok/s)
+[21:31:07]   ← OK (10 tok) Hello! How can I assist you today?...
+```
+
+**Nenhuma** chamada saiu da maquina. Verificado com lsof.
+
+> Observacao adicional: em modo `--print`, e necessario fechar
+> o stdin com `</dev/null`, caso contrario o claude trava esperando
+> input mesmo com o prompt passado como argumento.
 
 ---
 

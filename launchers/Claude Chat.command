@@ -20,6 +20,12 @@
 #   - applies the macOS keychain auth workaround (ANTHROPIC_AUTH_TOKEN +
 #     hasCompletedOnboarding=true) so the local API key is actually used
 #     instead of the model-selection login prompt
+#   - disables all non-essential traffic to api.anthropic.com (telemetry,
+#     statsig, marketplace auto-install, autoupdater, background tasks).
+#     Without CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 the CLI still
+#     reaches out to api.anthropic.com on startup even with
+#     ANTHROPIC_BASE_URL pointing at localhost — which means "running
+#     offline" is not actually offline by default.
 #
 # Use this for: code Q&A, snippet generation, debugging help, conversations.
 # For tool-driven sessions, see "Claude Agentico.command".
@@ -50,6 +56,10 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
 ANTHROPIC_AUTH_TOKEN=sk-local \
 DISABLE_LOGIN_COMMAND=1 \
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+DISABLE_AUTOUPDATER=1 \
+CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1 \
+CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 \
 CLAUDE_SESSION_LABEL="Local Chat" \
 exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
   --tools "" \
