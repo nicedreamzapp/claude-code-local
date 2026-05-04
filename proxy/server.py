@@ -396,6 +396,36 @@ def parse_tool_calls(text):
                 if recovered:
                     tool_calls.append(recovered)
 
+    # Format 3.5: Qwen 2.5 — <tools>{"name": "x", "arguments": {...}}</tools>
+    # Some Qwen 2.5 fine-tunes emit a <tools> wrapper instead of <tool_call>.
+    if not tool_calls:
+        pattern_qwen25 = r'<tools>\s*(.*?)\s*</tools>'
+        for match in re.finditer(pattern_qwen25, text, re.DOTALL):
+            content = match.group(1).strip()
+            remaining = remaining.replace(match.group(0), "", 1)
+            if not content:
+                continue
+            try:
+                call_data = json.loads(content)
+                if isinstance(call_data, list):
+                    for cd in call_data:
+                        if isinstance(cd, dict) and "name" in cd:
+                            tool_calls.append({
+                                "name": cd.get("name", ""),
+                                "arguments": cd.get("arguments", cd.get("parameters", {})),
+                            })
+                elif isinstance(call_data, dict) and "name" in call_data:
+                    tool_calls.append({
+                        "name": call_data.get("name", ""),
+                        "arguments": call_data.get("arguments", call_data.get("parameters", {})),
+                    })
+            except json.JSONDecodeError:
+                recovered = recover_garbled_tool_json(content, text)
+                if recovered:
+                    tool_calls.append(recovered)
+                else:
+                    log(f"  Warning: unrecoverable <tools> JSON: {content[:100]}")
+
     # Format 4: Garbled — no tags at all, but parameter= patterns in raw text
     if not tool_calls:
         # Look for any tool name followed by parameter patterns
