@@ -114,7 +114,10 @@ ensure_mlx_server() {
   fi
 
   echo "$msg"
-  MLX_MODEL="$desired" "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  MLX_MODEL="$desired" \
+  MLX_KV_BITS="${MLX_KV_BITS:-}" \
+  MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
+  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
   if ! _wait_for_mlx_health; then
     echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
     echo "  Check /tmp/mlx-server.log for details"
@@ -135,7 +138,10 @@ force_restart_mlx_server() {
   fi
 
   echo "$msg"
-  MLX_MODEL="$desired" "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  MLX_MODEL="$desired" \
+  MLX_KV_BITS="${MLX_KV_BITS:-}" \
+  MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
+  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
   if ! _wait_for_mlx_health; then
     echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
     echo "  Check /tmp/mlx-server.log for details"

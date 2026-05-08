@@ -128,8 +128,8 @@ def clean_response(text):
     text = strip_think_tags(text)
     # Llama 3.x: strip function-call prefix token
     text = text.replace('<|python_tag|>', '').strip()
-    # Gemma 4: truncate at end-of-turn or start of a new turn
-    for stop_marker in ['<turn|>', '<|turn>']:
+    # Gemma 4 + Qwen + ChatML: truncate at end-of-turn or start of a new turn
+    for stop_marker in ['<turn|>', '<|turn>', '<|im_end|>', '<|endoftext|>', '<|im_start|>', '<|end_of_text|>', '<|eot_id|>']:
         if stop_marker in text:
             text = text[:text.index(stop_marker)].strip()
             break
@@ -395,6 +395,85 @@ def parse_tool_calls(text):
                 recovered = recover_garbled_tool_json(match.group(1))
                 if recovered:
                     tool_calls.append(recovered)
+
+    # Format 3.5: Qwen 2.5 — <tools>{"name": "x", "arguments": {...}}</tools>
+    # Some Qwen 2.5 fine-tunes emit a <tools> wrapper instead of <tool_call>.
+    if not tool_calls:
+        pattern_qwen25 = r'<tools>\s*(.*?)\s*</tools>'
+        for match in re.finditer(pattern_qwen25, text, re.DOTALL):
+            content = match.group(1).strip()
+            remaining = remaining.replace(match.group(0), "", 1)
+            if not content:
+                continue
+            try:
+                call_data = json.loads(content)
+                if isinstance(call_data, list):
+                    for cd in call_data:
+                        if isinstance(cd, dict) and "name" in cd:
+                            tool_calls.append({
+                                "name": cd.get("name", ""),
+                                "arguments": cd.get("arguments", cd.get("parameters", {})),
+                            })
+                elif isinstance(call_data, dict) and "name" in call_data:
+                    tool_calls.append({
+                        "name": call_data.get("name", ""),
+                        "arguments": call_data.get("arguments", call_data.get("parameters", {})),
+                    })
+            except json.JSONDecodeError:
+                recovered = recover_garbled_tool_json(content, text)
+                if recovered:
+                    tool_calls.append(recovered)
+                else:
+                    log(f"  Warning: unrecoverable <tools> JSON: {content[:100]}")
+
+    # Format 3.6: JSON inside markdown code block — ```json\n{"name":..,"arguments":..}\n```
+    # Some Qwen 2.5 fine-tunes emit tool calls as a fenced code block when the
+    # system prompt / chat template doesn't explicitly tell them to use the
+    # native <tool_call> wrapper. Two sub-cases supported:
+    #   (a) single JSON object inside the fence
+    #   (b) multiple JSON objects back-to-back inside the same fence (no
+    #       array, no commas) — the model expressing several sequential
+    #       tool calls in one go. Use raw_decode in a loop to extract them.
+    if not tool_calls:
+        pattern_md = r'```(?:json|tool[_ ]?call)?\s*\n?(.*?)\s*\n?```'
+        decoder_md = json.JSONDecoder()
+        for match in re.finditer(pattern_md, text, re.DOTALL):
+            content = match.group(1).strip()
+            if not content.lstrip().startswith("{"):
+                continue
+            extracted_in_block = []
+            pos = 0
+            while pos < len(content):
+                # Skip whitespace and stray commas between objects
+                while pos < len(content) and content[pos] in " \t\n\r,":
+                    pos += 1
+                if pos >= len(content):
+                    break
+                if content[pos] != "{":
+                    break
+                try:
+                    obj, end_pos = decoder_md.raw_decode(content, pos)
+                except json.JSONDecodeError:
+                    break
+                pos = end_pos
+                if not isinstance(obj, dict):
+                    continue
+                name = obj.get("name") or obj.get("tool")
+                args = (
+                    obj.get("arguments")
+                    or obj.get("parameters")
+                    or obj.get("args")
+                    or obj.get("input")
+                )
+                if name and isinstance(args, dict):
+                    extracted_in_block.append({"name": name, "arguments": args})
+            if extracted_in_block:
+                tool_calls.extend(extracted_in_block)
+                remaining = remaining.replace(match.group(0), "", 1)
+                log(
+                    f"  Markdown-fenced tool calls: "
+                    f"{', '.join(t['name'] for t in extracted_in_block)}"
+                )
 
     # Format 4: Garbled — no tags at all, but parameter= patterns in raw text
     if not tool_calls:
@@ -871,9 +950,11 @@ def generate_response(body):
     # ─── Retry logic: if model expressed intent to use a tool but we got no valid calls ───
     tool_intent_phrases = [
         "here's the command", "bash(", "read(", "edit(", "write(",
-        "<tool_call>", "<function=",
+        "<tool_call>", "<function=", "<tools>", '"name":', '"arguments":',
+        '"parameters":', "```json", "```tool",
     ]
     if not tool_calls and any(p in remaining_text.lower() for p in tool_intent_phrases):
+        log(f"  Tool intent detected but parser missed it. Raw text (400 chars): {remaining_text[:400]!r}")
         for retry in range(MAX_TOOL_RETRIES):
             log(f"  Retry {retry+1}/{MAX_TOOL_RETRIES}: tool intent detected but no valid tool call, re-prompting")
             retry_messages = messages + [
@@ -917,17 +998,48 @@ def generate_response(body):
         content_blocks.append({"type": "text", "text": remaining_text.strip()})
 
     if tool_calls:
-        # If we have tool calls but no text, add empty text block (Anthropic requires at least one)
-        if not content_blocks:
-            content_blocks.append({"type": "text", "text": ""})
+        # NOTE: previously this branch prepended an empty text block
+        # ({"type":"text","text":""}) "because Anthropic requires at least one
+        # block". That's incorrect — the Anthropic API accepts a content list
+        # made up of only tool_use blocks. The empty text block actively breaks
+        # Claude Code 2.1: it reads the first (empty) text block, decides the
+        # response is "(No output)", and silently discards the tool_use blocks
+        # that follow. Drop the empty text block entirely.
+
+        # Build a {tool_name: allowed_input_keys} map from the request schema
+        # so we can drop any extra keys the model hallucinated. Claude Code
+        # 2.1 silently rejects a tool_use response whose input has fields not
+        # declared in the tool's input_schema (e.g. Qwen 2.5 likes to add a
+        # "description" field next to "command" for Bash).
+        # Note: anthropic_tools here is the (possibly filtered) tool list
+        # the request actually sent — we must rebuild from `body["tools"]`
+        # to honor any code-mode trimming applied earlier in this function.
+        current_tools = body.get("tools", []) or anthropic_tools or []
+        tool_schemas = {}
+        for atool in current_tools:
+            schema = atool.get("input_schema") or {}
+            props = schema.get("properties") or {}
+            tool_schemas[atool.get("name", "")] = set(props.keys())
+        if os.environ.get("MLX_DEBUG_RESPONSE"):
+            log(f"  TOOL SCHEMAS: {tool_schemas}")
 
         for tc in tool_calls:
             tool_id = f"toolu_{uuid.uuid4().hex[:24]}"
+            raw_input = tc["arguments"] if isinstance(tc.get("arguments"), dict) else {}
+            allowed = tool_schemas.get(tc["name"])
+            if allowed is not None:
+                filtered = {k: v for k, v in raw_input.items() if k in allowed}
+                dropped = [k for k in raw_input if k not in allowed]
+                if dropped:
+                    log(f"  Filtered extra input keys for {tc['name']}: {dropped}")
+                tool_input = filtered
+            else:
+                tool_input = raw_input
             content_blocks.append({
                 "type": "tool_use",
                 "id": tool_id,
                 "name": tc["name"],
-                "input": tc["arguments"],
+                "input": tool_input,
             })
         finish_reason = "tool_use"
         log(f"  Tool calls: {', '.join(tc['name'] for tc in tool_calls)}")
@@ -961,6 +1073,105 @@ def send_json(handler, status, data):
     handler.wfile.write(resp)
 
 
+def send_anthropic_stream(handler, result):
+    """Replay a fully-generated Anthropic Messages response as a stream of
+    Server-Sent Events. Claude Code 2.1 sends `stream: true` for any request
+    that involves tools and silently discards a non-streaming response, so
+    we must emit the SSE event sequence even though we already have the
+    complete answer.
+
+    Event order (Anthropic Messages streaming spec):
+      message_start
+      for each content block i:
+        content_block_start
+        content_block_delta (text_delta for text, input_json_delta for tool_use)
+        content_block_stop
+      message_delta (with stop_reason)
+      message_stop
+    """
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream")
+    handler.send_header("Cache-Control", "no-cache")
+    # We replay a fully-generated message in one shot, so signal close so
+    # the client (Claude Code 2.1) doesn't keep waiting for more events.
+    handler.send_header("Connection", "close")
+    handler.end_headers()
+
+    def emit(event_type, payload):
+        handler.wfile.write(f"event: {event_type}\n".encode())
+        handler.wfile.write(f"data: {json.dumps(payload)}\n\n".encode())
+        handler.wfile.flush()
+
+    msg_start = {
+        "type": "message_start",
+        "message": {
+            "id": result["id"],
+            "type": "message",
+            "role": "assistant",
+            "model": result["model"],
+            "content": [],
+            "stop_reason": None,
+            "stop_sequence": None,
+            "usage": {
+                "input_tokens": result["usage"]["input_tokens"],
+                "output_tokens": 0,
+            },
+        },
+    }
+    emit("message_start", msg_start)
+
+    for idx, block in enumerate(result["content"]):
+        btype = block.get("type")
+        if btype == "text":
+            emit("content_block_start", {
+                "type": "content_block_start",
+                "index": idx,
+                "content_block": {"type": "text", "text": ""},
+            })
+            text = block.get("text", "")
+            if text:
+                emit("content_block_delta", {
+                    "type": "content_block_delta",
+                    "index": idx,
+                    "delta": {"type": "text_delta", "text": text},
+                })
+            emit("content_block_stop", {
+                "type": "content_block_stop",
+                "index": idx,
+            })
+        elif btype == "tool_use":
+            emit("content_block_start", {
+                "type": "content_block_start",
+                "index": idx,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": block["id"],
+                    "name": block["name"],
+                    "input": {},
+                },
+            })
+            input_json = json.dumps(block.get("input", {}))
+            emit("content_block_delta", {
+                "type": "content_block_delta",
+                "index": idx,
+                "delta": {"type": "input_json_delta", "partial_json": input_json},
+            })
+            emit("content_block_stop", {
+                "type": "content_block_stop",
+                "index": idx,
+            })
+
+    emit("message_delta", {
+        "type": "message_delta",
+        "delta": {
+            "stop_reason": result.get("stop_reason"),
+            "stop_sequence": result.get("stop_sequence"),
+        },
+        "usage": {"output_tokens": result["usage"]["output_tokens"]},
+    })
+    emit("message_stop", {"type": "message_stop"})
+
+
 def get_path(full_path):
     return urlparse(full_path).path
 
@@ -982,6 +1193,21 @@ class AnthropicHandler(BaseHTTPRequestHandler):
         body = json.loads(raw)
         tools_count = len(body.get("tools", []))
         log(f"POST {self.path} model={body.get('model','-')} max_tokens={body.get('max_tokens','-')} tools={tools_count}")
+        if os.environ.get("MLX_DEBUG_REQUEST"):
+            try:
+                msgs = body.get("messages", [])
+                roles_summary = []
+                for i, m in enumerate(msgs[-6:]):  # last 6 messages
+                    role = m.get("role", "?")
+                    content = m.get("content")
+                    if isinstance(content, str):
+                        roles_summary.append(f"[{role}] str({len(content)})")
+                    elif isinstance(content, list):
+                        types = [b.get("type", "?") for b in content if isinstance(b, dict)]
+                        roles_summary.append(f"[{role}] {types}")
+                log(f"  DEBUG msg trail (last 6/{len(msgs)}): {' | '.join(roles_summary)}")
+            except Exception as e:
+                log(f"  DEBUG dump failed: {e}")
 
         if path in ("/v1/messages", "/messages"):
             try:
@@ -993,7 +1219,20 @@ class AnthropicHandler(BaseHTTPRequestHandler):
                     log(f"  ← OK ({result['usage']['output_tokens']} tok) {preview}...")
                 elif first["type"] == "tool_use":
                     log(f"  ← OK ({result['usage']['output_tokens']} tok) [tool_use: {first['name']}]")
-                send_json(self, 200, result)
+                if os.environ.get("MLX_DEBUG_RESPONSE"):
+                    try:
+                        log(f"  RESPONSE JSON: {json.dumps(result, ensure_ascii=False)[:1500]}")
+                    except Exception as e:
+                        log(f"  RESPONSE dump failed: {e}")
+
+                # Anthropic SSE streaming: when the client requests stream=true
+                # we MUST respond with text/event-stream, otherwise Claude Code
+                # 2.1 silently discards the response (it expects SSE for any
+                # request with tools and falls through on plain JSON).
+                if body.get("stream"):
+                    send_anthropic_stream(self, result)
+                else:
+                    send_json(self, 200, result)
             except Exception as e:
                 log(f"  ← ERROR: {e}")
                 import traceback
