@@ -127,7 +127,13 @@ def strip_think_tags(text):
 
 
 class ThinkingFilter:
-    """Real-time filter that removes Gemma 4 thinking blocks during SSE streaming."""
+    """Real-time filter that removes Gemma 4 thinking blocks from the mlx_lm token stream.
+
+    Applied token-by-token inside the stream_generate loop so thinking content is
+    discarded as it arrives rather than accumulated and regex-stripped after the fact.
+    Works independently of HTTP SSE — the SSE layer (send_anthropic_stream) operates
+    on the already-cleaned result returned by generate_response.
+    """
     THINK_START = "<|channel>thought\n"
     THINK_END = "<channel|>"
 
@@ -1039,13 +1045,15 @@ def generate_response(body):
 
             retry_text = ""
             retry_gen = 0
+            retry_tf = ThinkingFilter()
             with generate_lock:
                 for response in stream_generate(
                     model=model, tokenizer=tokenizer, prompt=retry_tokens,
                     max_tokens=max_tokens, **gen_kwargs,
                 ):
-                    retry_text += response.text
+                    retry_text += retry_tf.feed(response.text)
                     retry_gen = response.generation_tokens
+            retry_text += retry_tf.flush()
 
             retry_text = clean_response(retry_text)
             retry_calls, retry_remaining = parse_tool_calls(retry_text)
