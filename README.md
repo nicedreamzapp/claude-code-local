@@ -423,6 +423,7 @@ You can override defaults with environment variables:
 | `MLX_KV_QUANT_START` | `1024` | Token position where KV quantization begins |
 | `MLX_TOOL_RETRIES` | `2` | Max retries when a garbled tool call is detected |
 | `MLX_MAX_TOKENS` | `8192` | Max output tokens per response |
+| `MLX_SUPPRESS_THINKING` | `1` | Pre-fill an empty thinking block so Gemma 4 skips its reasoning chain entirely. Saves ~1 min/request. Set to `0` if you want the model to reason before responding. |
 
 ---
 
@@ -568,9 +569,9 @@ The server (`proxy/server.py`) is **one file, ~1000 lines**. It does six things:
 1. 📦 **Loads the model** — Apple's MLX framework, native Metal GPU, unified memory. Handles Gemma's `RotatingKVCache` quirk automatically so sliding-window models don't crash on the first request.
 2. 🔌 **Speaks Anthropic API** — Claude Code thinks it's talking to Anthropic's cloud. It's not.
 3. 🔧 **Translates tool use** — Three different tool-call formats in and out: Gemma 4 native (`<|tool_call>call:Name{...}<tool_call|>`), Llama 3.3 raw JSON (`{"type":"function",...}`), and HuggingFace `<tool_call>` JSON (Qwen and others). All converted ↔ Anthropic `tool_use` blocks, with garbled-output recovery for small models.
-4. 🧹 **Cleans the output** — Local models think out loud in `<think>` / `<|channel>thought` tags, emit stop markers (`<turn|>`, `<|python_tag|>`), and sometimes drop in reasoning preamble. We strip all of it before sending back to Claude Code.
+4. 🧹 **Cleans the output** — Local models think out loud in `<think>` / `<|channel>thought` tags, emit stop markers (`<turn|>`, `<|python_tag|>`), and sometimes drop in reasoning preamble. A real-time `ThinkingFilter` strips thinking blocks token-by-token during generation — before they accumulate in the buffer — then `clean_response` handles the rest.
 5. ⚡ **Reuses prompt caches across requests** — so Claude Code's 4K-token system prompt doesn't get re-prefilled on every turn. Huge speedup for short questions.
-6. 🎯 **Code mode** — auto-detects Claude Code coding sessions (any of Bash/Read/Edit/Write/Grep/Glob in the tools list) and swaps Claude Code's ~10K-token harness prompt for a slim ~100-token one tuned for local models. Cuts prompt tokens by 99% and stops models from refusing with "I am not able to execute this task."
+6. 🎯 **Code mode** — auto-detects Claude Code coding sessions (any of Bash/Read/Edit/Write/Grep/Glob in the tools list), swaps Claude Code's ~10K-token harness prompt for a slim ~150-token one tuned for local models, **and strips verbose tool descriptions down to name + parameter types**. In practice: 35 tools with full descriptions = ~5 600 prompt tokens; after code mode, ~200 tokens — a **28× reduction** that cuts prefill time from ~60 s to ~2 s on Gemma 4 31B. Also stops models from refusing with "I am not able to execute this task."
 
 ---
 

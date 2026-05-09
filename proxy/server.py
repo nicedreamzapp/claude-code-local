@@ -41,6 +41,9 @@ MODEL_PATH = os.environ.get("MLX_MODEL", "divinetribe/gemma-4-31b-it-abliterated
 PORT = int(os.environ.get("MLX_PORT", "4000"))
 KV_BITS = int(os.environ.get("MLX_KV_BITS", "0"))  # Gemma 4 RotatingKVCache doesn't support quantization
 PREFILL_SIZE = int(os.environ.get("MLX_PREFILL_SIZE", "8192"))
+# Pre-fill an empty thinking block to skip Gemma 4 reasoning chains entirely.
+# Set MLX_SUPPRESS_THINKING=0 to disable (e.g. when you want reasoning output).
+SUPPRESS_THINKING = os.environ.get("MLX_SUPPRESS_THINKING", "1") == "1"
 DEFAULT_MAX_TOKENS = int(os.environ.get("MLX_MAX_TOKENS", "8192"))
 KV_QUANT_START = int(os.environ.get("MLX_KV_QUANT_START", "256"))
 MAX_TOOL_RETRIES = int(os.environ.get("MLX_TOOL_RETRIES", "2"))
@@ -121,6 +124,43 @@ def strip_think_tags(text):
     # Empty tool_call blocks
     cleaned = re.sub(r'<tool_call>\s*</tool_call>', '', cleaned).strip()
     return cleaned if cleaned else text
+
+
+class ThinkingFilter:
+    """Real-time filter that removes Gemma 4 thinking blocks during SSE streaming."""
+    THINK_START = "<|channel>thought\n"
+    THINK_END = "<channel|>"
+
+    def __init__(self):
+        self.in_thinking = False
+        self.buf = ""
+
+    def feed(self, chunk):
+        self.buf += chunk
+        output = ""
+        while True:
+            if self.in_thinking:
+                idx = self.buf.find(self.THINK_END)
+                if idx == -1:
+                    safe = max(0, len(self.buf) - len(self.THINK_END) + 1)
+                    self.buf = self.buf[safe:]
+                    break
+                self.in_thinking = False
+                self.buf = self.buf[idx + len(self.THINK_END):]
+            else:
+                idx = self.buf.find(self.THINK_START)
+                if idx == -1:
+                    safe = max(0, len(self.buf) - len(self.THINK_START) + 1)
+                    output += self.buf[:safe]
+                    self.buf = self.buf[safe:]
+                    break
+                output += self.buf[:idx]
+                self.in_thinking = True
+                self.buf = self.buf[idx + len(self.THINK_START):]
+        return output
+
+    def flush(self):
+        return "" if self.in_thinking else self.buf
 
 
 def clean_response(text):
@@ -768,17 +808,33 @@ def looks_like_code_session(body):
     return bool(tool_names & CODE_TOOLS_ALLOW)
 
 
+def slim_tool(tool):
+    """Strip verbose Claude Code descriptions from a tool, keeping only name + param names.
+
+    The chat template serializes full descriptions as JSON, ballooning prompts to 5000+
+    tokens for just 4 tools. Slimming cuts that to ~150 tokens while preserving tool-call
+    functionality (the model already knows what Bash/Read/Edit/Write do from the system prompt).
+    """
+    schema = tool.get("input_schema", {})
+    props = schema.get("properties", {})
+    slim_props = {k: {"type": v.get("type", "string")} for k, v in props.items()}
+    slim_schema = {"type": "object", "properties": slim_props}
+    if schema.get("required"):
+        slim_schema["required"] = schema["required"]
+    return {"name": tool["name"], "description": tool["name"], "input_schema": slim_schema}
+
+
 def optimize_for_code(body):
     """Strip Claude Code bloat: replace the 10K-token harness prompt with a
-    Llama-tuned coding prompt and filter tools down to the core 6."""
+    compact coding prompt and slim tool definitions to ~150 tokens total."""
     body["system"] = CODE_SYSTEM_PROMPT
 
     tools = body.get("tools", [])
-    code_tools = [t for t in tools if t.get("name", "") in CODE_TOOLS_ALLOW]
+    code_tools = [slim_tool(t) for t in tools if t.get("name", "") in CODE_TOOLS_ALLOW]
     if code_tools:
         stripped = len(tools) - len(code_tools)
         body["tools"] = code_tools
-        log(f"  Code mode: {len(tools)} tools → {len(code_tools)} (stripped {stripped})")
+        log(f"  Code mode: {len(tools)} tools → {len(code_tools)} (stripped {stripped}, descriptions slimmed)")
 
     return body
 
@@ -847,6 +903,14 @@ def generate_response(body):
 
     # Tokenize (with tools if present)
     token_ids = tokenize_messages(messages, tools=llm_tools)
+
+    # Pre-fill an empty thinking block so the model skips its reasoning chain entirely.
+    # Gemma 4 generates 300-500 thinking tokens per request by default — this cuts them out.
+    if SUPPRESS_THINKING and "gemma" in MODEL_PATH.lower():
+        skip = tokenizer.encode("<|channel>thought\n<channel|>", add_special_tokens=False)
+        token_ids = list(token_ids) + list(skip)
+        log(f"  Thinking suppressed (+{len(skip)} prefill tokens)")
+
     prompt_tokens = len(token_ids)
     log(f"  Prompt: {prompt_tokens} tokens")
 
@@ -913,7 +977,9 @@ def generate_response(body):
     else:
         gen_kwargs["sampler"] = make_sampler(temp=0.0)
 
-    # Generate
+    # Generate — ThinkingFilter removes Gemma 4 thinking blocks in real-time
+    # so clean_response never sees them (more robust than regex post-hoc).
+    tf = ThinkingFilter()
     full_text = ""
     gen_tokens = 0
     finish_reason = "end_turn"
@@ -927,12 +993,14 @@ def generate_response(body):
             max_tokens=max_tokens,
             **gen_kwargs,
         ):
-            full_text += response.text
+            full_text += tf.feed(response.text)
             gen_tokens = response.generation_tokens
             if response.finish_reason == "length":
                 finish_reason = "max_tokens"
             elif response.finish_reason == "stop":
                 finish_reason = "end_turn"
+
+    full_text += tf.flush()
 
     # Cache is updated in-place by MLX — save the token prefix for next request's diff
     _cached_token_prefix = token_ids
@@ -1225,10 +1293,6 @@ class AnthropicHandler(BaseHTTPRequestHandler):
                     except Exception as e:
                         log(f"  RESPONSE dump failed: {e}")
 
-                # Anthropic SSE streaming: when the client requests stream=true
-                # we MUST respond with text/event-stream, otherwise Claude Code
-                # 2.1 silently discards the response (it expects SSE for any
-                # request with tools and falls through on plain JSON).
                 if body.get("stream"):
                     send_anthropic_stream(self, result)
                 else:

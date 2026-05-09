@@ -94,6 +94,28 @@ Our local setup **beats cloud Opus on speed** (65 vs 40 tok/s) and is within str
 
 ---
 
+## Gemma 4 31B — Prompt Latency Fix (M4 Pro, 64 GB)
+
+Gemma 4 is a reasoning model that produces `<|channel>thought\n…<channel|>` blocks before every response. Combined with Claude Code's verbose tool descriptions, the effective prompt was ~5 600 tokens per turn — causing ~60 s of prefill before the first output token.
+
+Two server-side fixes cut E2E latency by ~4×:
+
+| Fix | Mechanism | Tokens saved | Latency before | Latency after |
+|---|---|:---:|:---:|:---:|
+| **Tool description slimming** | Strip all text from tool definitions in code mode, keep only name + param types | ~5 400 tok | ~60 s prefill | ~2 s prefill |
+| **Thinking suppression** (`MLX_SUPPRESS_THINKING=1`) | Pre-fill an empty `<\|channel>thought\n<channel\|>` block so the model skips its reasoning chain | ~300–500 tok generated | ~40 s generation | ~1 s generation |
+
+```
+Gemma 4 31B "hello" latency (M4 Pro, warm server):
+
+  Before fixes    ████████████████████████████████████████████████████████████████████████████ ~120 s
+  After fixes     ████ ~3-5 s
+```
+
+Generation speed is hardware-bound at ~13.5 tok/s on M4 Pro (memory bandwidth limit for a 17 GB model). The latency reduction comes entirely from eliminating unnecessary tokens — not from changing the model or quantization.
+
+---
+
 ## Methodology
 
 - All benchmarks run on a warm server (model already loaded)
