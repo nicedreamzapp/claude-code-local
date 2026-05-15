@@ -125,6 +125,7 @@ elif [ $MEM_GB -lt 64 ]; then
 else
   ok "${MEM_GB} GB → ${C_BOLD}${C_GREEN}Gemma 4 31B${C_RESET} for daily, ${C_BOLD}Qwen 3.5 122B${C_RESET} when you need throughput"
   echo "    Gemma daily: ~40+ tok/s. Qwen 122B MoE: ~65 tok/s on big-RAM Macs."
+  echo "    Also solid: ${C_CYAN}Qwen3.6-35B-A3B (MLX 4-bit)${C_RESET} — ~100 tok/s gen, ~22GB peak, MoE w/ 3B active. Community-validated on M4 Max (issue #31)."
   echo "    You have headroom for any MLX model on HuggingFace."
   RECOMMENDED="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
   EXPECTED_TPS="~40+"
