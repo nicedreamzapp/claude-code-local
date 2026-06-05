@@ -62,9 +62,9 @@ elif [ "$MEM_GB" -ge 64 ]; then
   MODEL_LABEL="Gemma 4 31B Abliterated (THE QUICK ONE — ~15 tok/s)"
   MODEL_TIER="🟢 fast"
 elif [ "$MEM_GB" -ge 32 ]; then
-  MODEL_ID="divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
-  MODEL_LABEL="Gemma 4 31B Abliterated (tight fit, may swap)"
-  MODEL_TIER="🟡 squeeze"
+  MODEL_ID="divinetribe/Qwen3.6-27B-abliterated-4bit-mlx"
+  MODEL_LABEL="Qwen 3.6 27B Abliterated (fits 32 GB comfortably — ~15 GB)"
+  MODEL_TIER="🟢 fast"
 else
   MODEL_ID="mlx-community/Qwen3.5-4B-4bit"
   MODEL_LABEL="Qwen 3.5 4B (lightweight, browser-agent friendly)"
