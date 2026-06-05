@@ -86,6 +86,31 @@
 ---
 
 <p align="center">
+  <h2 align="center">🌌 THE REMATCH — 4 AI Engines Build Northern Lights, 3 Fully Local</h2>
+  <p align="center">
+    <strong>Same prompt. Four engines. One MacBook.<br>
+    The new local challenger — Qwen3.6 27B — painted the best aurora, and never touched the internet.</strong>
+  </p>
+  <p align="center">
+    <a href="https://www.youtube.com/watch?v=03KVQmEx13Q">
+      <img src="https://img.youtube.com/vi/03KVQmEx13Q/maxresdefault.jpg" width="720" alt="The Rematch — 4 AI engines build northern lights on one MacBook, 3 fully local">
+    </a>
+  </p>
+  <p align="center">
+    <a href="https://www.youtube.com/watch?v=03KVQmEx13Q">
+      <img src="https://img.shields.io/badge/▶_Watch_on_YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch on YouTube">
+    </a>
+    &nbsp;
+    <a href="https://www.youtube.com/@nicedreamzapps">
+      <img src="https://img.shields.io/badge/Subscribe-@nicedreamzapps-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Subscribe">
+    </a>
+  </p>
+  <p align="center">
+    <em>Qwen3.6 27B: 5,262 tok / 163s · DeepSeek V4 Flash: 3,879 tok / 115s · Cloud Claude: 110s · Gemma 31B: 2,001 tok / 83s — 3 of 4 ran fully offline.</em>
+  </p>
+</p>
+
+<p align="center">
   <h2 align="center">🏁 HEXAGON SHOOTOUT — Free AI vs $100/mo Claude Code</h2>
   <p align="center">
     <strong>Three AIs. One laptop. Same prompt. Live counters.<br>
