@@ -29,9 +29,9 @@ case "${1:-start}" in
     # NOTE: Qwen3-VL (vision) is NOT in the pool — it needs mlx-vlm, not this
     # mlx_lm text server (verified: "missing arg tie_word_embeddings"). Vision is
     # a separate setup. Warm pair = the two text models used daily.
-    # new coder: Qwen3-Coder-Next Opus-4.6-distilled abliterated 4bit MLX (divinetribe, 2026-06-15)
-    # old coder kept as fallback in router.py MLX_MODELS["qwen-old"]
-    start_one 4000 "$HOME/mlx-convert/Huihui-Qwen3-Coder-Next-Opus-4.6-Reasoning-Distilled-abliterated-4bit-mlx" "divinetribe/Huihui-Qwen3-Coder-Next-Opus-4.6-Reasoning-Distilled-abliterated-4bit-mlx"
+    # DEFAULT coder = Qwen3-Coder-30B-A3B 8-bit (benchmarked best daily driver 2026-06-16).
+    # New 80B reasoning model is MLX_MODELS["qwen-new"], loaded on-demand for hard tasks.
+    start_one 4000 "$HOME/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit" "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit"
     start_one 4001 "$HOME/.cache/huggingface/hub/gemma-4-31b-it-abliterated-4bit-mlx" "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
     echo "  warm pool starting (Qwen :4000 · Gemma :4001)"
     ;;

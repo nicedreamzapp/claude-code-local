@@ -30,13 +30,15 @@ LAUNCH_LIB = f"{SETUP}/launchers/lib/claude-local-common.sh"
 # helper so the MLX server gets a real local path, not a bare name it tries to
 # download. Matches what Qwen 3 Coder.command / Gemma 4 Code.command pass.
 MLX_MODELS = {
-    # default/code lane: Qwen3-Coder-Next Opus-4.6-distilled, abliterated, 4bit MLX.
-    # 80B-A3B MoE w/ reasoning; uncensored. Our own divinetribe conversion (2026-06-15).
-    "qwen":   ('$HOME/mlx-convert/Huihui-Qwen3-Coder-Next-Opus-4.6-Reasoning-Distilled-abliterated-4bit-mlx',
-               'divinetribe/Huihui-Qwen3-Coder-Next-Opus-4.6-Reasoning-Distilled-abliterated-4bit-mlx'),
-    # previous coder, kept as instant fallback — flip "qwen" back to this if needed.
-    "qwen-old": ('$HOME/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit',
-                 'lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit'),
+    # DEFAULT/code lane: Qwen3-Coder-30B-A3B 8-bit. Benchmarked 2026-06-16 as the
+    # better daily driver — faster (~18s vs 134s), fewer tokens (~1.6k vs 12k),
+    # more reliable (the reasoning model stubbed out on simple tasks).
+    "qwen":   ('$HOME/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit',
+               'lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit'),
+    # Qwen3-Coder-Next Opus-4.6 abliterated 80B reasoning model — on-demand for
+    # genuinely hard problems where its reasoning headroom may pay off.
+    "qwen-new": ('$HOME/mlx-convert/Huihui-Qwen3-Coder-Next-Opus-4.6-Reasoning-Distilled-abliterated-4bit-mlx',
+                 'divinetribe/Huihui-Qwen3-Coder-Next-Opus-4.6-Reasoning-Distilled-abliterated-4bit-mlx'),
     "gemma":  ('$HOME/.cache/huggingface/hub/gemma-4-31b-it-abliterated-4bit-mlx',
                'divinetribe/gemma-4-31b-it-abliterated-4bit-mlx'),
     # GLM-4.5-Air 6-bit: bigger + higher fidelity than 2-bit DeepSeek, MLX so it
