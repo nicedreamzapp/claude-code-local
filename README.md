@@ -60,7 +60,7 @@
   </p>
   <p align="center">
     <a href="https://nicedreamzwholesale.com/airgap/">
-      <img src="https://img.shields.io/badge/📞_Need_this_for_your_firm%3F-Book_a_15--min_call-black?style=for-the-badge" alt="Book a call">
+      <img src="https://img.shields.io/badge/🔒_See_a_full_private_build-AirGap-black?style=for-the-badge" alt="Book a call">
     </a>
   </p>
 </p>
@@ -68,15 +68,7 @@
 ---
 
 <p align="center">
-  <h3 align="center">🖥️ Don't want to DIY? Get this stack on a Mac mini, ready to plug in.</h3>
-  <p align="center">
-    <em>The AirGap Box ships a pre-configured Mac mini to your office with this stack, a 31B-parameter language model, and three working agents already installed.<br>One-time price. No subscription. Founding-customer pricing for the first 5 buyers.</em>
-  </p>
-  <p align="center">
-    <a href="https://nicedreamzwholesale.com/airgap-box/">
-      <img src="https://img.shields.io/badge/🖥️_AirGap_Box-Pre--configured_Mac_mini_%E2%80%94_Waitlist_Open-1f5d3a?style=for-the-badge" alt="AirGap Box waitlist">
-    </a>
-  </p>
+  <em>AirGap is the name for this whole build running as one private workstation. It's a capability, not a product for sale — everything you need is in this repo. If your firm needs one built and your team trained, <a href="https://nicedreamzwholesale.com/airgap/">here's what it looks like</a>.</em>
 </p>
 
 ---
@@ -998,13 +990,13 @@ Tested on **Apple M5 Max** with **128 GB unified memory**.
 
 ## 👋 Who built this
 
-Built by Matt Macosko in Arcata, CA. All of this is part of the **[Nice Dreamz LLC](https://nicedreamzwholesale.com)** umbrella — the consulting + open-source side of what I do day-to-day.
+Built by Matt Macosko in Arcata, CA. All of this is part of the **[Nice Dreamz LLC](https://nicedreamzwholesale.com)** umbrella — the open-source and builder side of what I do day-to-day.
 
 If this repo is useful to you, here's the rest of the work:
 
 | | |
 |---|---|
-| 🔒 **[AirGap AI](https://nicedreamzwholesale.com/airgap/)** | Local AI partnership for firms that can't put client work in someone else's cloud — law, accounting, medical, therapy. I install on-device AI inside your office, train your team, and keep your stack on the current best open-source model as the field evolves (signed USB w/ checksums, or in-person install — your call). One firm at a time. Book a 15-min call. |
+| 🔒 **[AirGap AI](https://nicedreamzwholesale.com/airgap/)** | What a full private-AI workstation looks like for firms that can't put client work in someone else's cloud. A capability I keep sharp, not a packaged product — the whole stack is in this repo. If you genuinely need one built, email me. |
 | 🖥️ **[Nice Dreamz Software](https://nicedreamzwholesale.com/software/)** | The rest of the open-source lineup — NarrateClaude, the browser agent, CemaniHomesteadRobot, VisionBuilder, and more. |
 | 🌿 **[Divine Tribe](https://ineedhemp.com)** | The hardware side — Core XL, V5, Ruby Twist. 13 years of building physical products. |
 | 📰 **[Marijuana Union](https://marijuanaunion.com)** | Community + news site. Where the long-form writing lives. |
