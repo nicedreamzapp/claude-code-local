@@ -37,16 +37,29 @@ from mlx_lm.models.cache import make_prompt_cache
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
+def env_int(name, default):
+    """int() an env var, treating unset *and empty* as "use the default".
+
+    os.environ.get(name, default) only falls back when the key is absent, not
+    when it is present-but-empty. The launchers pass values through
+    ensure_mlx_server() as MLX_KV_BITS="${MLX_KV_BITS:-}", which exports an
+    empty string when the caller hasn't set one — so int("") raised ValueError
+    and the server died before it ever bound the port.
+    """
+    raw = os.environ.get(name, "")
+    return int(raw) if raw.strip() else default
+
+
 MODEL_PATH = os.environ.get("MLX_MODEL", "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx")
-PORT = int(os.environ.get("MLX_PORT", "4000"))
-KV_BITS = int(os.environ.get("MLX_KV_BITS", "0"))  # Gemma 4 RotatingKVCache doesn't support quantization
-PREFILL_SIZE = int(os.environ.get("MLX_PREFILL_SIZE", "8192"))
+PORT = env_int("MLX_PORT", 4000)
+KV_BITS = env_int("MLX_KV_BITS", 0)  # Gemma 4 RotatingKVCache doesn't support quantization
+PREFILL_SIZE = env_int("MLX_PREFILL_SIZE", 8192)
 # Pre-fill an empty thinking block to skip Gemma 4 reasoning chains entirely.
 # Set MLX_SUPPRESS_THINKING=0 to disable (e.g. when you want reasoning output).
 SUPPRESS_THINKING = os.environ.get("MLX_SUPPRESS_THINKING", "1") == "1"
-DEFAULT_MAX_TOKENS = int(os.environ.get("MLX_MAX_TOKENS", "8192"))
-KV_QUANT_START = int(os.environ.get("MLX_KV_QUANT_START", "256"))
-MAX_TOOL_RETRIES = int(os.environ.get("MLX_TOOL_RETRIES", "2"))
+DEFAULT_MAX_TOKENS = env_int("MLX_MAX_TOKENS", 8192)
+KV_QUANT_START = env_int("MLX_KV_QUANT_START", 256)
+MAX_TOOL_RETRIES = env_int("MLX_TOOL_RETRIES", 2)
 # Browser mode: strip Claude Code bloat, keep only MCP tools
 BROWSER_MODE = os.environ.get("MLX_BROWSER_MODE", "0") == "1"
 # Code mode: auto-detect Claude Code coding sessions and replace the huge harness
@@ -97,6 +110,26 @@ def load_model():
     if not getattr(tokenizer, 'chat_template', None):
         tokenizer.chat_template = GEMMA4_CHAT_TEMPLATE
         log("Injected Gemma 4 chat template")
+
+    # Some quant repos ship a generation_config.json whose eos_token_id
+    # disagrees with tokenizer_config.json's eos_token. mlx-lm seeds its stop
+    # set (tokenizer.eos_token_ids) from generation_config, so when the chat
+    # template actually terminates turns with the *other* token, generation
+    # never stops: the real stop token is decoded as ordinary text and every
+    # request runs to max_tokens.
+    #
+    # Seen on divinetribe/Hermes-4-14B-abliterated-4bit-mlx, whose
+    # generation_config says 151643 (<|endoftext|>) while its template emits
+    # 151645 (<|im_end|>) — 503s and 4096 tokens for what should be a 20-token
+    # tool call. Unioning the two is safe: a token that is EOS in either config
+    # is never a legitimate mid-sequence token.
+    _tok_eos = getattr(tokenizer, "eos_token_id", None)
+    if _tok_eos is not None:
+        _stop_set = set(getattr(tokenizer, "eos_token_ids", None) or set())
+        if _tok_eos not in _stop_set:
+            tokenizer.eos_token_ids = _stop_set | {_tok_eos}
+            log(f"Added eos_token_id {_tok_eos} to stop set (was {_stop_set or set()})")
+
     elapsed = time.time() - t0
     log(f"Model loaded in {elapsed:.1f}s")
 
@@ -849,8 +882,13 @@ def optimize_for_code(body):
 
 _first_request = True
 
-def generate_response(body):
-    """Run MLX inference and return Anthropic-formatted response."""
+def generate_response(body, on_start=None, on_text=None):
+    """Run MLX inference and return Anthropic-formatted response.
+
+    on_start(prompt_tokens) / on_text(chunk) are optional live-streaming
+    hooks (issue #39): on_start fires once right before generation begins,
+    on_text fires with each thinking-filtered text chunk as it is generated.
+    """
     global _first_request
 
     # In browser mode, strip Claude Code bloat before inference.
@@ -991,6 +1029,9 @@ def generate_response(body):
     finish_reason = "end_turn"
     t0 = time.time()
 
+    if on_start:
+        on_start(prompt_tokens)
+
     with generate_lock:
         for response in stream_generate(
             model=model,
@@ -999,14 +1040,20 @@ def generate_response(body):
             max_tokens=max_tokens,
             **gen_kwargs,
         ):
-            full_text += tf.feed(response.text)
+            chunk = tf.feed(response.text)
+            full_text += chunk
+            if on_text and chunk:
+                on_text(chunk)
             gen_tokens = response.generation_tokens
             if response.finish_reason == "length":
                 finish_reason = "max_tokens"
             elif response.finish_reason == "stop":
                 finish_reason = "end_turn"
 
-    full_text += tf.flush()
+    _tail = tf.flush()
+    full_text += _tail
+    if on_text and _tail:
+        on_text(_tail)
 
     # Cache is updated in-place by MLX — save the token prefix for next request's diff
     _cached_token_prefix = token_ids
@@ -1027,7 +1074,10 @@ def generate_response(body):
         "<tool_call>", "<function=", "<tools>", '"name":', '"arguments":',
         '"parameters":', "```json", "```tool",
     ]
-    if not tool_calls and any(p in remaining_text.lower() for p in tool_intent_phrases):
+    # llm_tools guard: a request with no tools can never need a tool-call
+    # retry — without it, chat answers containing '```json' etc. triggered
+    # a pointless (and confusing) re-generation.
+    if llm_tools and not tool_calls and any(p in remaining_text.lower() for p in tool_intent_phrases):
         log(f"  Tool intent detected but parser missed it. Raw text (400 chars): {remaining_text[:400]!r}")
         for retry in range(MAX_TOOL_RETRIES):
             log(f"  Retry {retry+1}/{MAX_TOOL_RETRIES}: tool intent detected but no valid tool call, re-prompting")
@@ -1248,6 +1298,139 @@ def send_anthropic_stream(handler, result):
     emit("message_stop", {"type": "message_stop"})
 
 
+def send_anthropic_stream_live(handler, body):
+    """Stream tokens to the client AS THEY ARE GENERATED (issue #39).
+
+    Used only for streaming requests with no tools. The tool path must
+    buffer the complete response to parse (and possibly retry) tool calls,
+    but plain chat has no reason to wait — before this, time-to-first-token
+    equaled full-response latency because send_anthropic_stream replayed a
+    finished message.
+
+    A holdback buffer keeps the last few chars unsent so any leaked stop
+    marker (the ones clean_response truncates at) never reaches the client,
+    even when it straddles a chunk boundary.
+    """
+    STOP_MARKERS = ['<turn|>', '<|turn>', '<|im_end|>', '<|endoftext|>',
+                    '<|im_start|>', '<|end_of_text|>', '<|eot_id|>']
+    HOLDBACK = 24  # > longest stop marker
+
+    msg_id = f"msg_{uuid.uuid4().hex[:24]}"
+    model_name = body.get("model", "claude-sonnet-4-6")
+    t0 = time.time()
+    state = {"first": None, "lead": True, "buf": "", "done": False}
+
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.send_header("Connection", "close")
+    handler.end_headers()
+
+    def emit(event_type, payload):
+        handler.wfile.write(f"event: {event_type}\n".encode())
+        handler.wfile.write(f"data: {json.dumps(payload)}\n\n".encode())
+        handler.wfile.flush()
+
+    def emit_delta(text):
+        if state["lead"]:
+            text = text.lstrip()
+            if not text:
+                return
+            state["lead"] = False
+        if state["first"] is None:
+            state["first"] = time.time() - t0
+        emit("content_block_delta", {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "text_delta", "text": text},
+        })
+
+    def on_start(prompt_tokens):
+        emit("message_start", {
+            "type": "message_start",
+            "message": {
+                "id": msg_id,
+                "type": "message",
+                "role": "assistant",
+                "model": model_name,
+                "content": [],
+                "stop_reason": None,
+                "stop_sequence": None,
+                "usage": {"input_tokens": prompt_tokens, "output_tokens": 0},
+            },
+        })
+        emit("content_block_start", {
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {"type": "text", "text": ""},
+        })
+
+    def on_text(chunk):
+        if state["done"]:
+            return
+        state["buf"] += chunk
+        cut = -1
+        for m in STOP_MARKERS:
+            i = state["buf"].find(m)
+            if i >= 0 and (cut < 0 or i < cut):
+                cut = i
+        if cut >= 0:
+            out = state["buf"][:cut].rstrip()
+            state["buf"] = ""
+            state["done"] = True
+            if out:
+                emit_delta(out)
+            return
+        if len(state["buf"]) > HOLDBACK:
+            out = state["buf"][:-HOLDBACK]
+            state["buf"] = state["buf"][-HOLDBACK:]
+            emit_delta(out)
+
+    try:
+        result = generate_response(body, on_start=on_start, on_text=on_text)
+    except (BrokenPipeError, ConnectionResetError):
+        log("  live stream: client disconnected mid-generation")
+        return
+    except Exception as e:
+        log(f"  live stream ERROR: {e}")
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        try:
+            emit("error", {"type": "error",
+                           "error": {"type": "server_error", "message": str(e)}})
+        except Exception:
+            pass
+        return
+
+    try:
+        if not state["done"] and state["buf"]:
+            tail = state["buf"].rstrip()
+            state["buf"] = ""
+            if tail:
+                emit_delta(tail)
+        emit("content_block_stop", {"type": "content_block_stop", "index": 0})
+        emit("message_delta", {
+            "type": "message_delta",
+            "delta": {
+                "stop_reason": result.get("stop_reason"),
+                "stop_sequence": result.get("stop_sequence"),
+            },
+            "usage": {"output_tokens": result["usage"]["output_tokens"]},
+        })
+        emit("message_stop", {"type": "message_stop"})
+    except (BrokenPipeError, ConnectionResetError):
+        log("  live stream: client disconnected at finalize")
+        return
+
+    ttft = state["first"]
+    total = time.time() - t0
+    if ttft is not None:
+        log(f"  ← OK live-streamed ({result['usage']['output_tokens']} tok) "
+            f"first token {ttft:.2f}s, done {total:.2f}s")
+    else:
+        log(f"  ← OK live-streamed (empty response, {total:.2f}s)")
+
+
 def get_path(full_path):
     return urlparse(full_path).path
 
@@ -1287,6 +1470,14 @@ class AnthropicHandler(BaseHTTPRequestHandler):
 
         if path in ("/v1/messages", "/messages"):
             try:
+                # Live token streaming for tool-less requests (issue #39).
+                # Tool requests keep the buffer-parse-retry path below.
+                # Opt out with MLX_LIVE_STREAM=0.
+                if (body.get("stream") and not body.get("tools")
+                        and os.environ.get("MLX_LIVE_STREAM", "1").lower() not in ("0", "false")):
+                    send_anthropic_stream_live(self, body)
+                    return
+
                 result = generate_response(body)
                 # Log preview of first content block
                 first = result["content"][0]
