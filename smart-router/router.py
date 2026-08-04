@@ -35,16 +35,14 @@ MLX_MODELS = {
     # more reliable (the reasoning model stubbed out on simple tasks).
     "qwen":   ('$HOME/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit',
                'lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit'),
-    # Qwen3-Coder-Next Opus-4.6 abliterated 80B reasoning model — on-demand for
-    # genuinely hard problems where its reasoning headroom may pay off.
-    "qwen-new": ('$HOME/mlx-convert/Huihui-Qwen3-Coder-Next-Opus-4.6-Reasoning-Distilled-abliterated-4bit-mlx',
-                 'divinetribe/Huihui-Qwen3-Coder-Next-Opus-4.6-Reasoning-Distilled-abliterated-4bit-mlx'),
+    # Qwen3-Coder-Next 80B (Opus-4.6 reasoning-distilled) DELETED 2026-06-22 — benchmarked
+    # as useless: bloats/never finishes one-shot builds (0/18 on a hard parser, no code at
+    # all), and in agentic mode it won't even call a tool. The plain 30B beat it on
+    # everything. 42GB reclaimed. Default coder stays the 30B "qwen" lane.
     "gemma":  ('$HOME/.cache/huggingface/hub/gemma-4-31b-it-abliterated-4bit-mlx',
                'divinetribe/gemma-4-31b-it-abliterated-4bit-mlx'),
-    # GLM-4.5-Air 6-bit: bigger + higher fidelity than 2-bit DeepSeek, MLX so it
-    # swaps fast on :4000 -> the hard-reasoning lane.
-    "glm":    ('$HOME/.lmstudio/models/lmstudio-community/GLM-4.5-Air-MLX-6bit',
-               'lmstudio-community/GLM-4.5-Air-MLX-6bit'),
+    # GLM-4.5-Air removed 2026-06-21 (outdated July-2025 model, deleted from disk).
+    # Hard-reasoning lane now goes to DeepSeek V4 Flash 284B.
     # Qwen3-VL 32B: the only model that can SEE images -> vision lane.
     "qwenvl": ('$HOME/.cache/huggingface/hub/Huihui-Qwen3-VL-32B-Instruct-abliterated-4bit-mlx',
                'divinetribe/Huihui-Qwen3-VL-32B-Instruct-abliterated-4bit-mlx'),
@@ -97,7 +95,7 @@ def route(body) -> tuple[str, str]:
 
     # explicit overrides win
     if "/deep" in low:  return "deepseek", "override /deep"
-    if "/glm"  in low:  return "glm",      "override /glm"
+    if "/glm"  in low:  return "deepseek", "override /glm (GLM removed -> DeepSeek)"
     if "/fast" in low:  return "gemma",    "override /fast"
     if "/code" in low:  return "qwen",     "override /code"
 
@@ -108,7 +106,7 @@ def route(body) -> tuple[str, str]:
     if toks > BIG_CONTEXT_TOKENS:
         return "deepseek", f"large context ~{toks//1000}k tok (1M ctx)"
     if HARD_HINTS.search(text):
-        return "glm", "hard reasoning -> GLM-4.5-Air (6-bit, local)"
+        return "deepseek", "hard reasoning -> DeepSeek V4 Flash 284B (local)"
     if TRIVIAL.match(text.strip()):
         return "gemma", "trivial chitchat"
     return "qwen", "default (code/agentic)"
@@ -178,19 +176,7 @@ def ensure_backend(backend: str):
         subprocess.run(["bash", "-lc", os.path.expanduser("~/.local/bin/ds4-server-up")],
                        check=False, capture_output=True)
         return DS4_URL
-    # --- GLM-4.5-Air: exclusive, own port ---
-    if backend == "glm":
-        if _port_listening(4000) or _port_listening(4001):
-            sys.stderr.write("[one-ai] unloading warm pool for GLM-4.5-Air\n"); _stop_warm_pool()
-        if _port_listening(8000): _stop_ds4()
-        if not _health_ok(GLM_PORT):
-            local, repo = MLX_MODELS["glm"]
-            subprocess.run(["bash", "-lc",
-                f'source "{LAUNCH_LIB}"; M="$(resolve_mlx_model "{local}" "{repo}")"; '
-                f'MLX_PORT={GLM_PORT} MLX_MODEL="$M" nohup "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-{GLM_PORT}.log 2>&1 & disown'],
-                check=False)
-            _wait_health(GLM_PORT)
-        return f"http://127.0.0.1:{GLM_PORT}"
+    # GLM-4.5-Air lane removed 2026-06-21 (model deleted; hard reasoning -> deepseek)
     # fallback (e.g. images) -> default warm qwen
     return ensure_backend("qwen")
 

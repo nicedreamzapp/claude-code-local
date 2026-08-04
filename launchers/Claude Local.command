@@ -33,7 +33,7 @@ echo ""
 ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
 exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
-  --permission-mode auto \
+  --permission-mode bypassPermissions \
   --bare \
   --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
   --mcp-config "$HOME/.claude.json"

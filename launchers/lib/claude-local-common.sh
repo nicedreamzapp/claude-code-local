@@ -11,6 +11,13 @@
 MLX_SERVER="${MLX_SERVER:-$HOME/.local/mlx-native-server/server.py}"
 MLX_PYTHON="${MLX_PYTHON:-$HOME/.local/mlx-server/bin/python3}"
 
+# Auto-load HQ credentials (HQ_URL, HQ_TOKEN, WooCommerce keys, etc.) so any
+# launcher that sources this lib gives its in-session Bash calls — email
+# briefing, reply-customer, invoices — working creds without a manual
+# `source .env`. Absolute path, so it works regardless of the launcher's cwd.
+_HQ_ENV="$HOME/Desktop/PROJECTS/ineedhemp website/.env"
+[ -f "$_HQ_ENV" ] && set -a && . "$_HQ_ENV" && set +a
+
 # Read the running server's /health and extract the "model" field. Prints the
 # model path/id on stdout, or nothing if the server isn't up.
 _get_running_mlx_model() {
@@ -90,6 +97,58 @@ _stop_mlx_server() {
   return 1
 }
 
+# Reserve room with forge_guard (:8790), start the server, and keep the seat
+# alive for as long as the server lives.
+#
+# 2026-08-03: without this the server died the moment a real Claude Code
+# request arrived. forge_guard owns memory policy on this box and SIGTERMs any
+# big process that never asked for room; a ~18GB model server whose CPU reads
+# ~0 during a GPU prefill is the textbook "idle hog" its evict-idle sweep
+# exists to kill. Log line was `evict-idle unregistered pid=... <- SIGTERM
+# (available 14.0GB)` five seconds after the first 10k-token prompt, and
+# Claude Code then spun on ConnectionRefused with nothing left to reconnect
+# to. Asking politely also means the launcher WAITS for room instead of
+# racing a customer song into swap.
+MEM_CLIENT="${MEM_CLIENT:-$HOME/SongForgeM5/mem_client.py}"
+MLX_LEASE_GB="${MLX_LEASE_GB:-24}"
+MLX_LEASE_TIMEOUT="${MLX_LEASE_TIMEOUT:-600}"
+
+_start_mlx_server() {
+  local desired="$1"
+  local msg="$2"
+  local lease_id=""
+
+  if [ -f "$MEM_CLIENT" ]; then
+    echo "  Reserving ${MLX_LEASE_GB}GB with forge_guard..."
+    lease_id="$(/usr/bin/python3 "$MEM_CLIENT" wait localclaude "$MLX_LEASE_GB" \
+      --timeout "$MLX_LEASE_TIMEOUT" 2>/dev/null)"
+    if [ -z "$lease_id" ]; then
+      echo "  ⚠ forge_guard refused ${MLX_LEASE_GB}GB — starting anyway, but this"
+      echo "    server may be evicted while Song Forge is busy. Check:"
+      echo "    /usr/bin/python3 $MEM_CLIENT state"
+    fi
+  fi
+
+  echo "$msg"
+  MLX_MODEL="$desired" \
+  MLX_KV_BITS="${MLX_KV_BITS:-}" \
+  MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
+  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  local server_pid=$!
+
+  if [ -n "$lease_id" ]; then
+    /usr/bin/python3 "$(dirname "${BASH_SOURCE[0]}")/hold_mem_lease.py" \
+      "$lease_id" "$server_pid" >/dev/null 2>&1 &
+  fi
+
+  if ! _wait_for_mlx_health; then
+    echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
+    echo "  Check /tmp/mlx-server.log for details"
+    [ -n "$lease_id" ] && /usr/bin/python3 "$MEM_CLIENT" release "$lease_id" >/dev/null 2>&1
+    exit 1
+  fi
+}
+
 # Start the MLX server with the given model, or confirm an already-running
 # server is loaded with that model. If the wrong model is running, stop it
 # and restart with the desired one.
@@ -113,16 +172,7 @@ ensure_mlx_server() {
     _stop_mlx_server || echo "  Warning: existing MLX server didn't exit cleanly, continuing anyway"
   fi
 
-  echo "$msg"
-  MLX_MODEL="$desired" \
-  MLX_KV_BITS="${MLX_KV_BITS:-}" \
-  MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
-  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
-  if ! _wait_for_mlx_health; then
-    echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
-    echo "  Check /tmp/mlx-server.log for details"
-    exit 1
-  fi
+  _start_mlx_server "$desired" "$msg"
 }
 
 # Force a fresh MLX server start regardless of what's already running. Used
@@ -137,14 +187,5 @@ force_restart_mlx_server() {
     _stop_mlx_server || echo "  Warning: existing MLX server didn't exit cleanly, continuing anyway"
   fi
 
-  echo "$msg"
-  MLX_MODEL="$desired" \
-  MLX_KV_BITS="${MLX_KV_BITS:-}" \
-  MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
-  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
-  if ! _wait_for_mlx_health; then
-    echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
-    echo "  Check /tmp/mlx-server.log for details"
-    exit 1
-  fi
+  _start_mlx_server "$desired" "$msg"
 }

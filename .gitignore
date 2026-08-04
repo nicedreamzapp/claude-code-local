@@ -9,3 +9,13 @@ __pycache__/
 .claude/
 *.key
 orchestrator.key
+
+# --- local deployment (local-m5 branch) ---
+# Model weights and vendored third-party checkouts: never version these.
+# ds4/ is its own separate git repo — it manages itself, don't nest it here.
+ds4/
+AniPortrait/
+output/
+NarrativeGemma/*.html
+
+*.o

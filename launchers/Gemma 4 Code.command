@@ -27,10 +27,21 @@ echo "  → MLX Native: 4-bit IT, abliterated, instruction tuned for coding"
 echo "  → Running on Apple Silicon — no cloud, no API fees"
 echo ""
 
+# Launch from the HQ project dir — same as Divine Tribe HQ.app — so CLAUDE.md
+# auto-discovery picks up the full business stack (this session is NOT --bare,
+# so auto-discovery + auto-memory both work):
+#   .../ineedhemp website/CLAUDE.md ..... store + invoice + email rules
+#   ~/CLAUDE.md ......................... $HOME / HQ session briefing (parent chain)
+#   ~/.claude/CLAUDE.md ................. global private rules
+#   ~/.claude/.../memory/MEMORY.md ...... auto-memory
+HQ_DIR="$HOME/Desktop/PROJECTS/ineedhemp website"
+cd "$HQ_DIR" 2>/dev/null || cd "$HOME"
+
 ANTHROPIC_BASE_URL=http://localhost:4000 \
 CLAUDE_SESSION_LABEL="Gemma 4 · Local" \
 exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
-  --permission-mode auto \
+  --permission-mode bypassPermissions \
   --settings "$SCRIPT_DIR/lib/local-settings.json" \
   --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
+  --add-dir "$HQ_DIR" \
   --mcp-config "$HOME/.claude.json"

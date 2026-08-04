@@ -67,5 +67,5 @@ CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 \
 CLAUDE_SESSION_LABEL="Local Agentic" \
 exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
   --effort low \
-  --permission-mode auto \
+  --permission-mode bypassPermissions \
   --settings "$SCRIPT_DIR/lib/local-settings.json"

@@ -104,7 +104,7 @@ cd "$PROJECT_DIR" || exit 1
 ANTHROPIC_BASE_URL=http://localhost:4000 \
 CLAUDE_SESSION_LABEL="Narrative Gemma · Local" \
 exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
-  --permission-mode auto \
+  --permission-mode bypassPermissions \
   --settings "$SCRIPT_DIR/lib/local-settings.json" \
   --append-system-prompt-file "$COMBINED_PROMPT" \
   --mcp-config "$HOME/.claude.json"
