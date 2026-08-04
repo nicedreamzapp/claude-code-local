@@ -554,6 +554,56 @@ def parse_tool_calls(text):
                     f"{', '.join(t['name'] for t in extracted_in_block)}"
                 )
 
+    # Format 3.7: bare top-level JSON with no wrapper at all —
+    #   {"name": "Bash", "arguments": {"command": "ls /tmp"}}
+    # Qwen 2.5 Coder emits exactly this: no <tool_call> tags, no <tools>, no
+    # markdown fence, just the object. Formats 3.5/3.6 already cover the
+    # wrapped and fenced variants of the same shape, so this is the last one.
+    # Without it Qwen 2.5 Coder scores 0/12 on scripts/test_mlx_server.py —
+    # every call is well-formed and every call is invisible to the parser.
+    # Re-prompting doesn't rescue it either: the retry explicitly asks for
+    # <tool_call> tags and the model declines, and recover_garbled_tool_json
+    # never fires because the JSON was never garbled.
+    #
+    # Same back-to-back handling as 3.6 (raw_decode in a loop) for models that
+    # emit several sequential calls without an array. Runs only after every
+    # tagged format has failed, so an explicit wrapper always takes priority.
+    if not tool_calls:
+        stripped = text.strip()
+        if stripped.startswith("{"):
+            decoder_bare = json.JSONDecoder()
+            extracted_bare = []
+            pos = 0
+            while pos < len(stripped):
+                while pos < len(stripped) and stripped[pos] in " \t\n\r,":
+                    pos += 1
+                if pos >= len(stripped) or stripped[pos] != "{":
+                    break
+                try:
+                    obj, end_pos = decoder_bare.raw_decode(stripped, pos)
+                except json.JSONDecodeError:
+                    break
+                pos = end_pos
+                if not isinstance(obj, dict):
+                    continue
+                name = obj.get("name") or obj.get("tool")
+                args = (
+                    obj.get("arguments")
+                    or obj.get("parameters")
+                    or obj.get("args")
+                    or obj.get("input")
+                )
+                if name and isinstance(args, dict):
+                    extracted_bare.append({"name": name, "arguments": args})
+            if extracted_bare:
+                tool_calls.extend(extracted_bare)
+                # The whole message was the tool call; nothing survives as prose.
+                remaining = stripped[pos:].strip()
+                log(
+                    f"  Bare JSON tool calls: "
+                    f"{', '.join(t['name'] for t in extracted_bare)}"
+                )
+
     # Format 4: Garbled — no tags at all, but parameter= patterns in raw text
     if not tool_calls:
         # Look for any tool name followed by parameter patterns
