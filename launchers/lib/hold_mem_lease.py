@@ -13,11 +13,23 @@ until the server exits and then releases the seat.
 
     hold_mem_lease.py <lease_id> <server_pid> [ttl_seconds]
 
+2026-08-04, two fixes after the 13:39 SIGTERM:
+
+  * Leases leaked. SIGTERM has no Python handler by default, so the process
+    died before `finally` ran and forge_guard kept billing 35GB to a server
+    that no longer existed. The seat then sat charged for its full TTL and
+    the next launch was refused for room it already owned. Handled now.
+
+  * The pid check only ran once per heartbeat, i.e. every 600s, so a dead
+    server kept its seat for up to ten minutes. Poll is now every 5s and the
+    heartbeat keeps its own slower clock.
+
 No guard on the box => nothing to do, exit quietly. A memory broker must
 never be the reason a launcher can't start.
 """
 
 import os
+import signal
 import sys
 import time
 
@@ -27,6 +39,8 @@ try:
     from mem_client import heartbeat, release
 except Exception:
     sys.exit(0)
+
+POLL = 5.0
 
 
 def main():
@@ -38,14 +52,28 @@ def main():
     if not lease_id:
         return 0
 
+    # Turn SIGTERM/SIGINT into a normal exception so `finally` runs and the
+    # seat goes back. Without this the guard's own SIGTERM leaked the lease.
+    def _bail(signum, frame):
+        raise SystemExit(0)
+
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(sig, _bail)
+        except Exception:
+            pass
+
+    next_beat = time.time() + ttl / 3.0
     try:
         while True:
-            time.sleep(ttl / 3.0)
+            time.sleep(POLL)
             try:
                 os.kill(pid, 0)
             except OSError:
                 break  # server gone — stop paying for its seat
-            heartbeat(lease_id, ttl)
+            if time.time() >= next_beat:
+                heartbeat(lease_id, ttl)
+                next_beat = time.time() + ttl / 3.0
     finally:
         release(lease_id)
     return 0

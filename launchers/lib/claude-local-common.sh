@@ -110,7 +110,13 @@ _stop_mlx_server() {
 # to. Asking politely also means the launcher WAITS for room instead of
 # racing a customer song into swap.
 MEM_CLIENT="${MEM_CLIENT:-$HOME/SongForgeM5/mem_client.py}"
-MLX_LEASE_GB="${MLX_LEASE_GB:-24}"
+# 28, not 24. Measured 2026-08-04 with the fixed prefill chunk, weights 16.7GB:
+# 18.4GB peak at an 8k prompt, 21.9GB at 38k, 24.0GB at 58k — call it +1GB per
+# 15k tokens of context. 24 was under the truth even for a middling session, and
+# an under-declared lease is exactly what the guard punishes: it logs an
+# overrun, charges the real number, and if the box is tight by then the process
+# gets SIGSTOPed and SIGTERMed mid-request. Ask honestly and it never has to.
+MLX_LEASE_GB="${MLX_LEASE_GB:-28}"
 MLX_LEASE_TIMEOUT="${MLX_LEASE_TIMEOUT:-600}"
 
 _start_mlx_server() {
