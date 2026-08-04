@@ -553,6 +553,19 @@ You don't have to be at your Mac to use this. Text a command, get back a full vi
 
 ---
 
+## 📱 Apps From The Same Workshop
+
+Same one-person shop, shipped to phones. No subscriptions, no accounts, nothing tracked — and **all four are live on the App Store and Google Play**.
+
+| App | What it does | Get it |
+|---|---|---|
+| 👁️ **RealTime AI Cam** | 601 object classes detected on-device at ~10 FPS, plus OCR, offline translation and LiDAR depth. Free. | [iPhone](https://apps.apple.com/us/app/id6751230739) · [Android](https://play.google.com/store/apps/details?id=com.mattmacosko.realtimeaicam) · [source](https://github.com/nicedreamzapp/RealTimeAICam) |
+| 🎙 **Song Forge** | Describe a song in any of 19 languages, own a finished original in minutes — rendered on my own Macs. | [iPhone](https://apps.apple.com/us/app/id6788616929) · [Android](https://play.google.com/store/apps/details?id=com.nicedreamz.ownatune) · [web](https://songforge.nicedreamzwholesale.com) · [source](https://github.com/nicedreamzapp/song-forge) |
+| 🪐 **RealTime Space** | Fly the whole solar system — real NASA imagery, true-3D atmospheric scattering, 8,920 real stars. | [iPhone](https://apps.apple.com/us/app/id6788646103) · [Android](https://play.google.com/store/apps/details?id=com.nicedreamz.realtimespace) · [source](https://github.com/nicedreamzapp/RealTime-Space) |
+| 🌳 **Brainforest** | Complete K–4 learning adventure, 2,000+ activities, 100% offline. No ads, no accounts, nothing tracked. | [iPhone](https://apps.apple.com/us/app/id6788301765) · [Android](https://play.google.com/store/apps/details?id=com.brainforest.app) |
+
+---
+
 ## 🛣️ What's Next
 
 We ship fast and in public. If any of these excite you, hit **Watch** to get the release ping.
@@ -585,6 +598,20 @@ Built on the shoulders of giants:
 | 🐳 [ds4](https://github.com/antirez/ds4) | DeepSeek V4 Flash Metal engine | Antirez |
 | 🔧 [huihui-ai](https://huggingface.co/huihui-ai) + [Babsie](https://huggingface.co/Babsie) | Abliterations we build on | — |
 | 📖 [Abliteration explained](https://huggingface.co/blog/mlabonne/abliteration) | The technique | Maxime Labonne |
+
+### 🧑‍🔧 Contributors
+
+Every one of these landed on hardware I don't own, on a bug I hadn't hit. Thank you.
+
+| Who | What they fixed |
+|---|---|
+| [@0xshugo](https://github.com/0xshugo) | Client disconnects handled, retries skipped when there are no tools ([#4](https://github.com/nicedreamzapp/claude-code-local/pull/4)) |
+| [@asdmoment](https://github.com/asdmoment) | Gemma inference crash — auto-disable KV quantization ([#7](https://github.com/nicedreamzapp/claude-code-local/pull/7)) |
+| [@kulveersingh](https://github.com/kulveersingh) | `ArraysCache` has no attribute `offset` ([#10](https://github.com/nicedreamzapp/claude-code-local/pull/10)) |
+| [@tripathiprateek](https://github.com/tripathiprateek) | `uninstall.sh` — reverses `setup.sh` cleanly ([#23](https://github.com/nicedreamzapp/claude-code-local/pull/23)) |
+| [@tadrianonet](https://github.com/tadrianonet) | Mac base/Pro 16 GB support: Qwen 2.5 14B, ChatML stop markers, `<tools>` parser, offline leak fix ([#32](https://github.com/nicedreamzapp/claude-code-local/pull/32)) |
+| [@kevbarns](https://github.com/kevbarns) | Gemma 4 thinking suppression + slimmer tool descriptions — ~4× latency cut ([#33](https://github.com/nicedreamzapp/claude-code-local/pull/33)) |
+| [@KaoCSC](https://github.com/KaoCSC) | Stop on the tokenizer's real EOS, and tolerate empty env ints ([#41](https://github.com/nicedreamzapp/claude-code-local/pull/41)) · bare JSON tool calls, which took Qwen 2.5 Coder from 0/12 to 14/14 ([#43](https://github.com/nicedreamzapp/claude-code-local/pull/43)) |
 
 Tested on **Apple M5 Max** with **128 GB unified memory**.
 

@@ -126,7 +126,11 @@ def extract_text(response):
 
 
 def run_test(name, messages, expect_tool=None, expect_any_tool=True, system=None):
-    """Run a single test case."""
+    """Run a single test case.
+
+    expect_tool may be a single tool name or a tuple of acceptable names, for
+    prompts where more than one tool is a legitimate answer.
+    """
     global PASS, FAIL
     kwargs = {"messages": messages}
     if system:
@@ -166,9 +170,13 @@ def run_test(name, messages, expect_tool=None, expect_any_tool=True, system=None
     if expect_any_tool and not tool_calls:
         passed = False
         reason = "Expected a tool call but got none"
-    elif expect_tool and not any(tc["name"] == expect_tool for tc in tool_calls):
+    elif expect_tool and not any(
+        tc["name"] in (expect_tool if isinstance(expect_tool, tuple) else (expect_tool,))
+        for tc in tool_calls
+    ):
         passed = False
-        reason = f"Expected tool '{expect_tool}' but got: {[tc['name'] for tc in tool_calls]}"
+        wanted = " or ".join(expect_tool) if isinstance(expect_tool, tuple) else expect_tool
+        reason = f"Expected tool '{wanted}' but got: {[tc['name'] for tc in tool_calls]}"
     elif tool_calls:
         # Verify tool calls have non-empty arguments
         for tc in tool_calls:
@@ -197,7 +205,9 @@ def test_simple_bash():
     return run_test(
         "Simple Bash command",
         [{"role": "user", "content": "List the files in /tmp"}],
-        expect_tool="Bash",
+        # Glob(pattern="/tmp/*") is as correct an answer as `ls /tmp` here —
+        # don't fail a model for picking the more precise tool (see #41).
+        expect_tool=("Bash", "Glob"),
     )
 
 
