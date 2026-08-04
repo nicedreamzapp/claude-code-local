@@ -21,6 +21,7 @@ effect on the running server after a restart — no re-copying needed.
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -53,7 +54,33 @@ def env_int(name, default):
 MODEL_PATH = os.environ.get("MLX_MODEL", "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx")
 PORT = env_int("MLX_PORT", 4000)
 KV_BITS = env_int("MLX_KV_BITS", 0)  # Gemma 4 RotatingKVCache doesn't support quantization
-PREFILL_SIZE = env_int("MLX_PREFILL_SIZE", 8192)
+# This used to default to 8192, which quietly TRIPLES peak memory on a long
+# prompt and is the reason a big Claude Code request could take the machine into
+# swap (or straight into the OOM killer on a 32GB Mac) while the model itself
+# fits fine.
+#
+# mlx_lm's prefill loop runs the WHOLE model on each chunk, lm_head included, so
+# a single 8192-token chunk allocates an (8192 x vocab) bf16 logits tensor it
+# immediately throws away — 4.3GB at Gemma's 262144 vocab. On top of that the
+# full attention layers score the entire chunk against every key so far. None of
+# it is reused, all of it is live at once.
+#
+# Measured on gemma-4-31b-it-abliterated-4bit-mlx (16.7GB of weights resident),
+# same prompt each time, via mx.get_peak_memory():
+#
+#     prompt    prefill 8192      prefill 1024      prefill 512
+#     21.4k     34.2GB / 49.3s    20.9GB / 37.7s    -      / 39.9s
+#     38.5k     -      / -        23.5GB / 83.1s    21.9GB / 71.0s
+#
+# 17.5GB of transients on a 21k prompt, against 4.2GB for the same work at 512.
+# Small chunks are not slower either — the GPU saturates far below 8192 tokens —
+# so there was never anything being traded away for that memory.
+PREFILL_SIZE = env_int("MLX_PREFILL_SIZE", 512)
+# Ceiling on MLX's buffer recycle pool, which counts toward this process's
+# memory. Measured at 0.0GB on the model above either way, so treat it as a
+# backstop for larger ones (Llama 70B 8-bit) rather than a fix on its own.
+# MLX_CACHE_LIMIT_GB=0 disables the cap.
+MEM_CACHE_LIMIT_GB = float(os.environ.get("MLX_CACHE_LIMIT_GB") or 3)
 # Pre-fill an empty thinking block to skip Gemma 4 reasoning chains entirely.
 # Set MLX_SUPPRESS_THINKING=0 to disable (e.g. when you want reasoning output).
 SUPPRESS_THINKING = os.environ.get("MLX_SUPPRESS_THINKING", "1") == "1"
@@ -100,8 +127,59 @@ GEMMA4_CHAT_TEMPLATE = (
     "{% if add_generation_prompt %}<|turn>model\n{% endif %}"
 )
 
+GB = 1024 ** 3
+
+
+def mem_snapshot():
+    """What this process is actually holding, in GB.
+
+    Watch mx_peak, not rss. `ps rss` cannot see Metal buffers — it reported a
+    flat 16.7GB straight through a prefill that MLX itself measured at 34GB, so
+    a server can be moments from swapping while every RSS reading looks calm.
+    Activity Monitor's "Memory" column (phys_footprint) does see them.
+    """
+    try:
+        rss = psutil_rss_gb()
+    except Exception:
+        rss = 0.0
+    return {
+        "rss_gb": round(rss, 1),
+        "mx_active_gb": round(mx.get_active_memory() / GB, 1),
+        "mx_cache_gb": round(mx.get_cache_memory() / GB, 1),
+        "mx_peak_gb": round(mx.get_peak_memory() / GB, 1),
+    }
+
+
+def psutil_rss_gb():
+    """RSS without a psutil dependency — the mlx venv doesn't ship one."""
+    out = subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
+                         capture_output=True, text=True).stdout.strip()
+    return int(out) / 1024 / 1024 if out else 0.0
+
+
+def release_transients(tag=""):
+    """Hand MLX's recycle pool back after every generation, and log the peak.
+
+    The log line is half the point. When a memory death happens there is no
+    traceback and usually no crash report, because the process is killed from
+    outside — so a per-request peak, written down while the server was still
+    alive, is the only thing that distinguishes "that prompt was too big" from
+    any other silent exit. On a 31B 4-bit the pool itself measures 0.0GB, so the
+    clear_cache is insurance for models that do accumulate one.
+    """
+    before = mx.get_cache_memory() / GB
+    peak = mx.get_peak_memory() / GB
+    mx.clear_cache()
+    log(f"  Memory{tag}: peak {peak:.1f}GB this request, "
+        f"released {before:.1f}GB of buffer cache, rss now {psutil_rss_gb():.1f}GB")
+    mx.reset_peak_memory()
+
+
 def load_model():
     global model, tokenizer, KV_BITS
+    if MEM_CACHE_LIMIT_GB > 0:
+        mx.set_cache_limit(int(MEM_CACHE_LIMIT_GB * GB))
+        log(f"MLX buffer cache capped at {MEM_CACHE_LIMIT_GB:g}GB")
     log(f"Loading model: {MODEL_PATH}")
     t0 = time.time()
     model, tokenizer = load(MODEL_PATH)
@@ -932,6 +1010,18 @@ def optimize_for_code(body):
 
 _first_request = True
 
+def count_prompt_tokens(body):
+    """Token count for an Anthropic request body, same path inference takes.
+
+    Deliberately runs the real convert + tokenize rather than estimating, so
+    the number Claude Code budgets against is the number we will actually
+    prefill. Cheap: tokenizing is milliseconds, no model involved.
+    """
+    anthropic_tools = body.get("tools", [])
+    llm_tools = convert_tools_for_llm(anthropic_tools) if anthropic_tools else None
+    return len(tokenize_messages(convert_messages(body), tools=llm_tools))
+
+
 def generate_response(body, on_start=None, on_text=None):
     """Run MLX inference and return Anthropic-formatted response.
 
@@ -1083,22 +1173,29 @@ def generate_response(body, on_start=None, on_text=None):
         on_start(prompt_tokens)
 
     with generate_lock:
-        for response in stream_generate(
-            model=model,
-            tokenizer=tokenizer,
-            prompt=prompt_for_gen,
-            max_tokens=max_tokens,
-            **gen_kwargs,
-        ):
-            chunk = tf.feed(response.text)
-            full_text += chunk
-            if on_text and chunk:
-                on_text(chunk)
-            gen_tokens = response.generation_tokens
-            if response.finish_reason == "length":
-                finish_reason = "max_tokens"
-            elif response.finish_reason == "stop":
-                finish_reason = "end_turn"
+        try:
+            for response in stream_generate(
+                model=model,
+                tokenizer=tokenizer,
+                prompt=prompt_for_gen,
+                max_tokens=max_tokens,
+                **gen_kwargs,
+            ):
+                chunk = tf.feed(response.text)
+                full_text += chunk
+                if on_text and chunk:
+                    on_text(chunk)
+                gen_tokens = response.generation_tokens
+                if response.finish_reason == "length":
+                    finish_reason = "max_tokens"
+                elif response.finish_reason == "stop":
+                    finish_reason = "end_turn"
+        finally:
+            # Give the prefill transients back before the next request (or the
+            # error handler) runs. In a finally so a failed generation cannot
+            # leave the pool inflated and get us evicted for memory we are no
+            # longer using.
+            release_transients()
 
     _tail = tf.flush()
     full_text += _tail
@@ -1551,6 +1648,20 @@ class AnthropicHandler(BaseHTTPRequestHandler):
                 import traceback
                 traceback.print_exc(file=sys.stderr)
                 send_json(self, 500, {"error": {"type": "server_error", "message": str(e)}})
+        elif path in ("/v1/messages/count_tokens", "/messages/count_tokens"):
+            # Claude Code asks for this before every turn and used to fall into
+            # the "Unknown POST" branch, which answers {} — no input_tokens at
+            # all. Answer it properly and its context meter has something real
+            # to work from. Runs the same convert + tokenize inference does, so
+            # the number it budgets against is the number we will prefill.
+            try:
+                n = count_prompt_tokens(body)
+            except Exception as e:
+                log(f"  count_tokens failed ({e}) — falling back to a char estimate")
+                n = len(json.dumps(body)) // 4
+            log(f"  count_tokens: {n}")
+            send_json(self, 200, {"input_tokens": n})
+
         else:
             log(f"  Unknown POST: {path}")
             send_json(self, 200, {})
@@ -1569,7 +1680,13 @@ class AnthropicHandler(BaseHTTPRequestHandler):
                 ]
             })
         elif path == "/health":
-            send_json(self, 200, {"status": "ok", "model": MODEL_PATH})
+            # The memory block is here so `curl :4000/health` answers "how close
+            # to the edge is this box?" without attaching to the process.
+            # mx_peak_gb is the honest one; see mem_snapshot on why not rss.
+            payload = {"status": "ok", "model": MODEL_PATH,
+                       "prefill_size": PREFILL_SIZE}
+            payload.update(mem_snapshot())
+            send_json(self, 200, payload)
         else:
             send_json(self, 200, {})
 
@@ -1591,6 +1708,9 @@ if __name__ == "__main__":
     print(f"Serving Anthropic Messages API on http://localhost:{PORT}")
     print(f"Model: {MODEL_PATH}")
     print(f"KV cache: {KV_BITS}-bit quantization (start at token {KV_QUANT_START})" if KV_BITS else "KV cache: full precision")
+    print(f"Prefill chunk: {PREFILL_SIZE} tokens"
+          + (f" · MLX buffer cache capped at {MEM_CACHE_LIMIT_GB:g}GB" if MEM_CACHE_LIMIT_GB > 0 else ""))
+    print(f"Memory now: {mem_snapshot()}")
     print(f"Prompt cache: enabled (KV reuse across requests)")
     print(f"Tool retry: up to {MAX_TOOL_RETRIES} retries on garbled tool calls")
     print()
