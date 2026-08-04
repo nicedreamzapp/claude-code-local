@@ -435,14 +435,28 @@ def parse_tool_calls(text):
 
     # Format 0: Gemma 4 native — <|tool_call>call:Name{key:<|"|>val<|"|>}<tool_call|>
     # Parse BEFORE replacing escape tokens — use <|"|> as reliable value delimiters
-    gemma4_pattern = r'<\|tool_call>(.*?)<tool_call\|>'
+    #
+    # Three spellings of the opener turn up in practice. The documented one is
+    # <|tool_call>call:Name{...}. Some models drop the call: prefix. And
+    # abliterated Gemma 4 31B collapses the whole marker to <tool_call:Name{...},
+    # which is the SAME grammar — same <|"|> value delimiters, same <tool_call|>
+    # closer, only the opening marker differs — so it is one alternation here
+    # rather than a new format further down.
+    #
+    # That third spelling cost 6 of 14 on scripts/test_mlx_server.py with
+    # divinetribe/gemma-4-31b-it-abliterated-4bit-mlx. Every call was well
+    # formed, every call was invisible, and the retry path can't rescue it
+    # because it asks for <tool_call> tags the model has already decided against.
+    # Some also emit a stray > after the closing brace; the body regex tolerates
+    # it because re.match doesn't have to consume the whole string.
+    gemma4_pattern = r'(?:<\|tool_call>|<tool_call:)(.*?)<tool_call\|>'
     gemma4_matches = list(re.finditer(gemma4_pattern, text, re.DOTALL))
     if gemma4_matches:
         remaining = text
         for match in gemma4_matches:
             remaining = remaining.replace(match.group(0), "", 1)
             content = match.group(1).strip()
-            name_m = re.match(r'call:([\w.]+)\{(.*)\}', content, re.DOTALL)
+            name_m = re.match(r'(?:call:)?([\w.]+)\s*\{(.*)\}', content, re.DOTALL)
             if not name_m:
                 log(f"  Gemma4 no name match: {content[:80]}")
                 continue
