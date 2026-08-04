@@ -37,16 +37,29 @@ from mlx_lm.models.cache import make_prompt_cache
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
+def env_int(name, default):
+    """int() an env var, treating unset *and empty* as "use the default".
+
+    os.environ.get(name, default) only falls back when the key is absent, not
+    when it is present-but-empty. The launchers pass values through
+    ensure_mlx_server() as MLX_KV_BITS="${MLX_KV_BITS:-}", which exports an
+    empty string when the caller hasn't set one — so int("") raised ValueError
+    and the server died before it ever bound the port.
+    """
+    raw = os.environ.get(name, "")
+    return int(raw) if raw.strip() else default
+
+
 MODEL_PATH = os.environ.get("MLX_MODEL", "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx")
-PORT = int(os.environ.get("MLX_PORT", "4000"))
-KV_BITS = int(os.environ.get("MLX_KV_BITS", "0"))  # Gemma 4 RotatingKVCache doesn't support quantization
-PREFILL_SIZE = int(os.environ.get("MLX_PREFILL_SIZE", "8192"))
+PORT = env_int("MLX_PORT", 4000)
+KV_BITS = env_int("MLX_KV_BITS", 0)  # Gemma 4 RotatingKVCache doesn't support quantization
+PREFILL_SIZE = env_int("MLX_PREFILL_SIZE", 8192)
 # Pre-fill an empty thinking block to skip Gemma 4 reasoning chains entirely.
 # Set MLX_SUPPRESS_THINKING=0 to disable (e.g. when you want reasoning output).
 SUPPRESS_THINKING = os.environ.get("MLX_SUPPRESS_THINKING", "1") == "1"
-DEFAULT_MAX_TOKENS = int(os.environ.get("MLX_MAX_TOKENS", "8192"))
-KV_QUANT_START = int(os.environ.get("MLX_KV_QUANT_START", "256"))
-MAX_TOOL_RETRIES = int(os.environ.get("MLX_TOOL_RETRIES", "2"))
+DEFAULT_MAX_TOKENS = env_int("MLX_MAX_TOKENS", 8192)
+KV_QUANT_START = env_int("MLX_KV_QUANT_START", 256)
+MAX_TOOL_RETRIES = env_int("MLX_TOOL_RETRIES", 2)
 # Browser mode: strip Claude Code bloat, keep only MCP tools
 BROWSER_MODE = os.environ.get("MLX_BROWSER_MODE", "0") == "1"
 # Code mode: auto-detect Claude Code coding sessions and replace the huge harness
@@ -97,6 +110,26 @@ def load_model():
     if not getattr(tokenizer, 'chat_template', None):
         tokenizer.chat_template = GEMMA4_CHAT_TEMPLATE
         log("Injected Gemma 4 chat template")
+
+    # Some quant repos ship a generation_config.json whose eos_token_id
+    # disagrees with tokenizer_config.json's eos_token. mlx-lm seeds its stop
+    # set (tokenizer.eos_token_ids) from generation_config, so when the chat
+    # template actually terminates turns with the *other* token, generation
+    # never stops: the real stop token is decoded as ordinary text and every
+    # request runs to max_tokens.
+    #
+    # Seen on divinetribe/Hermes-4-14B-abliterated-4bit-mlx, whose
+    # generation_config says 151643 (<|endoftext|>) while its template emits
+    # 151645 (<|im_end|>) — 503s and 4096 tokens for what should be a 20-token
+    # tool call. Unioning the two is safe: a token that is EOS in either config
+    # is never a legitimate mid-sequence token.
+    _tok_eos = getattr(tokenizer, "eos_token_id", None)
+    if _tok_eos is not None:
+        _stop_set = set(getattr(tokenizer, "eos_token_ids", None) or set())
+        if _tok_eos not in _stop_set:
+            tokenizer.eos_token_ids = _stop_set | {_tok_eos}
+            log(f"Added eos_token_id {_tok_eos} to stop set (was {_stop_set or set()})")
+
     elapsed = time.time() - t0
     log(f"Model loaded in {elapsed:.1f}s")
 
