@@ -1135,11 +1135,18 @@ def generate_response(body, on_start=None, on_text=None):
     if cache_hit_len >= len(token_ids):
         cache_hit_len = len(token_ids) - 1
 
+    # .offset is the live token count; .step is a fixed 256-token allocation
+    # increment. Reading .step made trim_amount negative for any prefix longer
+    # than 256 tokens, so the trim never ran and the cache kept the previous
+    # session's KV state (issue #46). Caches without .offset can't be trimmed
+    # safely at all, so fall through to a full prefill instead of guessing.
+    cache_offset = getattr(_prompt_cache[0], "offset", None) if _prompt_cache else None
+    if cache_hit_len > 0 and cache_offset is None:
+        log("  Cache has no offset (untrimmable type) — full prefill")
+        cache_hit_len = 0
+
     if cache_hit_len > 0:
         # Trim cache back to the shared prefix, then only prefill the delta
-        #cache_offset = _prompt_cache[0].offset  # total tokens in cache (prompt + gen)
-        # Try .step instead of .offset
-        cache_offset = _prompt_cache[0].step if hasattr(_prompt_cache[0], 'step') else 0
         trim_amount = cache_offset - cache_hit_len
         if trim_amount > 0:
             for c in _prompt_cache:
@@ -1218,6 +1225,15 @@ def generate_response(body, on_start=None, on_text=None):
 
     # Cache is updated in-place by MLX — save the token prefix for next request's diff
     _cached_token_prefix = token_ids
+
+    # An empty completion straight after a cache hit is almost always corrupt
+    # KV state, not a real answer. Say so, and drop the cache so the next
+    # request self-heals with a clean prefill instead of failing silently.
+    if cache_hit_len > 0 and not full_text.strip():
+        log(f"  WARNING: empty completion after a {cache_hit_len}-token cache hit "
+            f"— discarding prompt cache (see issue #46)")
+        _prompt_cache = None
+        _cached_token_prefix = None
 
     elapsed = time.time() - t0
     tps = gen_tokens / elapsed if elapsed > 0 else 0
