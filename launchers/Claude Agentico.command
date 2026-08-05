@@ -32,6 +32,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/claude-local-common.sh"
 
 CLAUDE_BIN="${CLAUDE_BIN:-$(command -v claude || echo $HOME/.local/bin/claude)}"
+require_claude_bin
 
 MLX_MODEL_DEFAULT="$(resolve_mlx_model \
   "$HOME/.cache/huggingface/hub/Qwen2.5-Coder-14B-Instruct-4bit" \

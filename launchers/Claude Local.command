@@ -8,7 +8,8 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/claude-local-common.sh"
 
-CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
+CLAUDE_BIN="${CLAUDE_BIN:-$(command -v claude || echo $HOME/.local/bin/claude)}"
+require_claude_bin
 MODEL_NAME="${MLX_MODEL_LABEL:-Gemma 4 31B}"
 
 # Default model matches server.py's default so this launcher behaves like

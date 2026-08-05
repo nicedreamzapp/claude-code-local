@@ -8,7 +8,8 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/claude-local-common.sh"
 
-CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
+CLAUDE_BIN="${CLAUDE_BIN:-$(command -v claude || echo $HOME/.local/bin/claude)}"
+require_claude_bin
 
 # Default points at our own abliterated MLX upload:
 #   https://huggingface.co/divinetribe/Llama-3.3-70B-Instruct-abliterated-8bit-mlx

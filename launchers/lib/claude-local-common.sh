@@ -148,3 +148,41 @@ force_restart_mlx_server() {
     exit 1
   fi
 }
+
+# Resolve the Claude Code CLI. Launchers used to hardcode $HOME/.local/bin/claude,
+# which fails outright for anyone who installed it via npm, Homebrew, or the
+# official installer into a different prefix (issue #40). Check PATH first, then
+# the usual install locations, and fail with something actionable instead of
+# "No such file or directory".
+require_claude_bin() {
+  if [ -n "$CLAUDE_BIN" ] && [ -x "$CLAUDE_BIN" ]; then
+    return 0
+  fi
+  local c
+  for c in "$(command -v claude 2>/dev/null)" \
+           "$HOME/.local/bin/claude" \
+           "$HOME/.claude/local/claude" \
+           "/opt/homebrew/bin/claude" \
+           "/usr/local/bin/claude"; do
+    if [ -n "$c" ] && [ -x "$c" ]; then
+      CLAUDE_BIN="$c"
+      return 0
+    fi
+  done
+  echo ""
+  echo "  ERROR: Claude Code CLI not found."
+  echo ""
+  echo "  Looked on your PATH and in:"
+  echo "    \$HOME/.local/bin/claude"
+  echo "    \$HOME/.claude/local/claude"
+  echo "    /opt/homebrew/bin/claude"
+  echo "    /usr/local/bin/claude"
+  echo ""
+  echo "  Install it with:"
+  echo "    curl -fsSL https://claude.ai/install.sh | bash"
+  echo ""
+  echo "  Already installed somewhere else? Point this launcher at it:"
+  echo "    CLAUDE_BIN=/path/to/claude \"\$0\""
+  echo ""
+  exit 1
+}

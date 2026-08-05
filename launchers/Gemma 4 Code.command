@@ -8,7 +8,8 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/claude-local-common.sh"
 
-CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
+CLAUDE_BIN="${CLAUDE_BIN:-$(command -v claude || echo $HOME/.local/bin/claude)}"
+require_claude_bin
 
 # Override with MLX_MODEL=<your-path-or-hf-id>. Prefers a local flat-folder
 # cache if you already downloaded the model via scripts/download-and-import.sh,
