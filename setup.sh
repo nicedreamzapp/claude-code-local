@@ -67,6 +67,10 @@ elif [ "$MEM_GB" -ge 32 ]; then
   MODEL_TIER="🟢 fast"
   # upgrade for more capability if you have the headroom (~15 GB):
   #   MODEL_ID="divinetribe/Qwen3.6-27B-abliterated-4bit-mlx"
+elif [ "$MEM_GB" -ge 16 ]; then
+  MODEL_ID="divinetribe/Hermes-4-14B-abliterated-4bit-mlx"
+  MODEL_LABEL="Hermes 4 14B Abliterated (the 16 GB MacBook pick — ~8 GB)"
+  MODEL_TIER="🟡 laptop"
 else
   MODEL_ID="mlx-community/Qwen3.5-4B-4bit"
   MODEL_LABEL="Qwen 3.5 4B (lightweight, browser-agent friendly)"
