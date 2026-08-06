@@ -42,6 +42,14 @@ curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/mai
 
 No API key. No second subscription. No waiting until 3pm. It works on a **16 GB MacBook** and gets better the more RAM you have — [see what runs on your Mac](#-what-you-need).
 
+<p align="center">
+  <img src="assets/demo.gif" width="900" alt="Claude Code editing a file with Gemma 4 31B running locally on a Mac, no cloud">
+</p>
+
+<p align="center">
+  <em>Real session, unedited. Claude Code reads and edits the file — the model answering is Gemma 4 31B on the laptop.</em>
+</p>
+
 ---
 
 ## 🤔 What Is This?
