@@ -17,7 +17,7 @@
   <p align="center">
     <a href="#-hit-your-claude-usage-limit">🛑 Usage Limit</a> ·
     <a href="#-what-is-this">🤔 What Is This</a> ·
-    <a href="#-quick-start-3-commands">🚀 Quick Start</a> ·
+    <a href="#-quick-start-one-command">🚀 Quick Start</a> ·
     <a href="#-the-lineup--pick-your-fighter">🥊 Lineup</a> ·
     <a href="#-the-modes">🎮 Modes</a> ·
     <a href="#-privacy--how-the-data-flows">🔒 Privacy</a> ·
@@ -37,9 +37,7 @@
 If Claude Code just told you **"you've reached your usage limit"** and gave you a reset time hours away, that's what this is for. You keep working — same Claude Code, same terminal, same project — except the model answering is running on your own Mac.
 
 ```bash
-git clone https://github.com/nicedreamzapp/claude-code-local
-cd claude-code-local
-bash setup.sh
+curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash
 ```
 
 No API key. No second subscription. No waiting until 3pm. It works on a **16 GB MacBook** and gets better the more RAM you have — [see what runs on your Mac](#-what-you-need).
@@ -197,7 +195,13 @@ Also need:
 
 ---
 
-## 🚀 Quick Start (3 Commands)
+## 🚀 Quick Start (One Command)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash
+```
+
+Or clone it yourself if you'd rather read the script first:
 
 ```bash
 git clone https://github.com/nicedreamzapp/claude-code-local
