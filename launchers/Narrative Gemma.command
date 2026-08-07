@@ -67,6 +67,9 @@ export AGENT_DIALECT="prompted"
 export AGENT_LEASE_NAME="agent-gemma4"
 export AGENT_LEASE_GB="28"
 export AGENT_SPEAK=1
+# Eval-proven addendum (12/12 vs 11/12 baseline): Gemma writes files via
+# shell echo if allowed, and sh echo eats backslashes. See agent/prompts/.
+export AGENT_PROMPT_FILE="$HOME/Desktop/PROJECTS/Local AI Setup/agent/prompts/gemma4.md"
 
 exec "${AGENT_PYTHON:-$HOME/.local/mlx-server/bin/python3}" \
   "$HOME/Desktop/PROJECTS/Local AI Setup/agent/agent.py"
