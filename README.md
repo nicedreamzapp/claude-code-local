@@ -182,6 +182,7 @@ Four ways to run the lineup. Each one is a double-clickable launcher in `launche
 | Mode | What it does | Launcher |
 |---|---|---|
 | 🤖 **Code** | Run Claude Code with a local model — same UX, no API key | `Claude Local.command`, `Gemma 4 Code.command`, `Llama 70B.command` |
+| ⚡ **Native Engine** *(new)* | Our own ~900-line agent, model loaded in-process — replies start in ~0.3 s deep into long sessions ([details](#-gen-4--the-native-engine-added-aug-7-2026)) | `Gemma 4 Code (Native Engine).command`, `Qwen 3 Coder (Native Engine).command` |
 | 🌐 **Browser** | Local AI controls real Brave browser via Chrome DevTools | `Browser Agent.command` |
 | 🎤 **Hands-Free Voice** | Speak in, hear replies in your cloned voice — full loop, 100% on-device | `Narrative Gemma.command` + [NarrateClaude](https://github.com/nicedreamzapp/NarrateClaude) |
 | 📱 **Phone** | iMessage in → text/image/video out, via [claude-screen-to-phone](https://github.com/nicedreamzapp/claude-screen-to-phone) | `~/.claude/imessage-*.sh` |
@@ -356,7 +357,7 @@ This is the part we're proudest of. **Your code never leaves your Mac.** Not for
 
 ## 📊 Benchmarks
 
-Three generations of optimization. Each one got faster.
+Four generations of optimization. Each one got faster.
 
 ### ⚡ Speed Comparison
 
@@ -365,6 +366,66 @@ Three generations of optimization. Each one got faster.
 | 🐌 Gen 1 | Ollama + Proxy | 30 tok/s | 133 s |
 | 🏃 Gen 2 | llama.cpp + Proxy | 41 tok/s | 133 s |
 | 🚀 Gen 3 | **MLX Native (ours)** | **65 tok/s** | **17.6 s** |
+| ⚡ Gen 4 | **Native engine** — same models, no Claude Code in the loop | first token in **0.36 s** at 4.5k ctx | see below |
+
+### ⚡ Gen 4 — The Native Engine (added Aug 7, 2026)
+
+**New, optional, and additive.** Every Claude Code launcher in this repo
+works exactly as it did yesterday. This is a second way in, for people who
+want the fastest possible turnaround out of the same local models.
+
+**Why we built it.** Claude Code is a great harness, but it was designed for
+cloud models: its system prompt is tens of thousands of tokens, and parts of
+the prompt change every turn. A local model pays for that twice — once in
+prefill time, and again because a mutating prompt head defeats KV-cache reuse
+entirely. The native engine (`agent/agent.py`, ~900 lines, zero dependencies
+beyond mlx-lm) flips the design: a ~550-token system prompt that never
+changes, the same tools (Bash/Read/Write/Edit/Glob/Grep), and a KV cache that
+is trimmed to the shared prefix each turn so only the *new* tokens are ever
+prefilled.
+
+**What we found on the way (useful even if you never run this).** While
+benchmarking we discovered that Gemma-family models hand their sliding-window
+layers a `RotatingKVCache` capped at the window (1024 tokens on Gemma 4). The
+moment a conversation outgrows the window, those caches report untrimmable and
+prompt-cache reuse silently dies — every turn re-prefills the entire
+transcript, exactly in the long sessions where caching matters most. The
+engine swaps in plain `KVCache` on every layer: the sliding-window attention
+*mask* still enforces the window, so outputs are byte-identical (we verified
+with a greedy A/B comparison), but the cache stays trimmable forever.
+`AGENT_ROLLING_KV=1` restores stock behavior if you want the lower memory
+ceiling instead.
+
+**Measured** (Gemma 4 31B 4-bit, 4.5k-token conversation, Apple Silicon):
+
+| | time to first token |
+|---|---:|
+| stock rotating cache (full re-prefill every turn) | 6.5–7.2 s |
+| native engine with the cache fix | **0.36 s** |
+
+Roughly **18× faster turn starts** on long sessions, with generation steady at
+26–28 tok/s. Reproduce it yourself: `python3 bench/agent_bench.py`.
+
+**Terminal UX**: a framed input area with a live context-percentage meter in
+the top rule, a thinking/running spinner so silence never means "hung", and
+readline history across sessions.
+
+**Run it**: double-click a `(Native Engine)` launcher, or:
+
+```bash
+AGENT_MODEL=lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit \
+AGENT_DIALECT=native \
+python3 agent/agent.py
+```
+
+`AGENT_DIALECT=native` uses the model's own tool-call template (Qwen3-Coder's
+XML with raw-text values); `prompted` teaches the same XML dialect in the
+system prompt for models whose native format re-introduces JSON escaping
+(Gemma). `AGENT_BACKEND=http` points the same agent at any local
+Anthropic-protocol server, including this repo's proxy.
+
+This builds directly on the prompt-cache trim work contributed in #46 — that
+fix is what made the deeper rotating-cache problem visible. Thank you.
 
 ### 🥊 Lineup Comparison
 
