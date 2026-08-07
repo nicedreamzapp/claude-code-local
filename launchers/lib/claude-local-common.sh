@@ -119,12 +119,42 @@ MEM_CLIENT="${MEM_CLIENT:-$HOME/SongForgeM5/mem_client.py}"
 MLX_LEASE_GB="${MLX_LEASE_GB:-28}"
 MLX_LEASE_TIMEOUT="${MLX_LEASE_TIMEOUT:-600}"
 
+# Release localclaude seats whose server is gone.
+#
+# 2026-08-07: two launches in a row hung at "Reserving ...GB". Not a memory
+# problem — a bookkeeping one. If the Terminal window closes (or you ^C) while
+# `mem_client wait` is blocked, the grant can land server-side after the shell
+# is already dead, so hold_mem_lease.py never starts and nobody ever releases.
+# The seat then bills its full 30-minute TTL and the NEXT launch is refused for
+# room it already owns: `hold localclaude 33GB — would exceed the non-forge
+# budget (17GB free of 50GB; 0GB already resident)`. That "0GB already
+# resident" is the tell — a seat charged to a process that does not exist.
+#
+# Only fires when NO mlx server is alive, so a healthy session is never touched.
+_reap_stale_localclaude_leases() {
+  pgrep -f "mlx-native-server/server.py" >/dev/null 2>&1 && return 0
+  /usr/bin/python3 - "$MEM_CLIENT" <<'PY' 2>/dev/null
+import json, subprocess, sys, urllib.request
+try:
+    st = json.load(urllib.request.urlopen("http://127.0.0.1:8790/api/state", timeout=5))
+except Exception:
+    sys.exit(0)
+for lease in st.get("leases", []):
+    if lease.get("name") != "localclaude" or lease.get("used_gb", 0) > 0.5:
+        continue
+    print(f"  Reclaiming orphaned {lease['gb']:.0f}GB seat {lease['id']} (server is gone)")
+    subprocess.run(["/usr/bin/python3", sys.argv[1], "release", lease["id"]],
+                   capture_output=True)
+PY
+}
+
 _start_mlx_server() {
   local desired="$1"
   local msg="$2"
   local lease_id=""
 
   if [ -f "$MEM_CLIENT" ]; then
+    _reap_stale_localclaude_leases
     echo "  Reserving ${MLX_LEASE_GB}GB with forge_guard..."
     lease_id="$(/usr/bin/python3 "$MEM_CLIENT" wait localclaude "$MLX_LEASE_GB" \
       --timeout "$MLX_LEASE_TIMEOUT" 2>/dev/null)"

@@ -59,6 +59,15 @@ def main():
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         try:
+            # Respect an inherited ignore (2026-08-07): warm_pool launches this
+            # under nohup because its servers OUTLIVE the Terminal window. The
+            # old unconditional trap turned the window-close SIGHUP into a
+            # release, stripping live servers of their seats — the guard then
+            # read the still-running pool as unleased hogs again. The launcher
+            # path (no nohup, server dies with the window) keeps trapping SIGHUP
+            # and releasing, exactly as before.
+            if signal.getsignal(sig) == signal.SIG_IGN:
+                continue
             signal.signal(sig, _bail)
         except Exception:
             pass

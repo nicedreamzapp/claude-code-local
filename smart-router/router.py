@@ -10,7 +10,7 @@ speaks Anthropic.
 
 Backends (all Anthropic-compatible):
   qwen     -> MLX server  :4000  (Qwen3-Coder 30B-A3B 8-bit)  DEFAULT / code / agentic
-  gemma    -> MLX server  :4000  (Gemma 4)                    quick / trivial
+  gemma    -> MLX server  :4002  (Gemma 4)                    quick / trivial
   deepseek -> ds4 server  :8000  (DeepSeek V4 Flash 284B)     huge context / hard reasoning
 
 Note: the MLX server holds ONE model at a time, so qwen<->gemma is a swap
@@ -122,7 +122,7 @@ def _mlx_running_model() -> str:
 
 # Warm pool: these two text models stay loaded together on their own ports, so
 # switching between them is INSTANT (no load/unload). ~46 GB total.
-WARM_PORTS = {"qwen": 4000, "gemma": 4001}
+WARM_PORTS = {"qwen": 4000, "gemma": 4002}  # 4001 is the Free AI gateway
 WARM_SH = f"{SETUP}/smart-router/warm_pool.sh"
 GLM_PORT = 4003   # GLM gets its own port; loading it displaces the warm pool
 
@@ -170,7 +170,7 @@ def ensure_backend(backend: str):
         return f"http://127.0.0.1:{port}"
     # --- DeepSeek 284B: exclusive ---
     if backend == "deepseek":
-        if _port_listening(4000) or _port_listening(4001):
+        if _port_listening(4000) or _port_listening(4002):
             sys.stderr.write("[one-ai] unloading warm pool for DeepSeek 284B\n"); _stop_warm_pool()
         if _port_listening(GLM_PORT): _stop_glm()
         subprocess.run(["bash", "-lc", os.path.expanduser("~/.local/bin/ds4-server-up")],

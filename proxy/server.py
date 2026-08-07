@@ -981,6 +981,13 @@ CODE_TOOLS_ALLOW = {
     "Glob",
 }
 
+def _system_chars(body):
+    s = body.get("system") or ""
+    if isinstance(s, list):
+        return sum(len(b.get("text", "")) for b in s if isinstance(b, dict))
+    return len(s)
+
+
 def looks_like_code_session(body):
     """Heuristic: if any of Claude Code's core file/shell tools are present,
     treat this as a coding session and apply the slim prompt."""
@@ -1049,7 +1056,12 @@ def generate_response(body, on_start=None, on_text=None):
     # Otherwise, auto-detect Claude Code coding sessions and apply code mode.
     if BROWSER_MODE:
         body = optimize_for_browser(body)
-    elif CODE_MODE_ENABLED and looks_like_code_session(body):
+    elif CODE_MODE_ENABLED and looks_like_code_session(body) and _system_chars(body) > 4000:
+        # Only strip when the system prompt is actually harness-sized bloat.
+        # Matt's own agent (Local AI Setup/agent/agent.py, 2026-08-07) sends a
+        # lean ~1K-char prompt that says which model this is — replacing it
+        # made every One AI session unable to name its own model, and slimming
+        # its already-terse tool descriptions lost real instructions.
         body = optimize_for_code(body)
 
     # Opt-in: append a project-specific system prompt to whatever the

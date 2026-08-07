@@ -1,47 +1,21 @@
 #!/bin/bash
-# Gemma 4 Code — Claude Code on Gemma 4 31B Abliterated (4-bit MLX)
-# Double-click to launch
+# Gemma 4 — Matt's own terminal agent on Gemma 4 31B Abliterated (4-bit MLX).
+# Double-click to launch.
 #
 # THE QUICK ONE — ~15 tok/s, ~18 GB RAM, abliterated, instruction-tuned.
-# Best balance of speed and quality for daily coding.
+# Runs the shared agent engine with the model loaded directly into the
+# process. Gemma's own tool-call template is a custom pseudo-JSON that
+# re-introduces escaping bugs, so the engine teaches it our XML dialect
+# in the system prompt instead (AGENT_DIALECT=prompted).
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/lib/claude-local-common.sh"
+cd "$HOME/Desktop/PROJECTS/ineedhemp website" 2>/dev/null || cd "$HOME"
 
-CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
+export AGENT_TITLE="Gemma 4 31B"
+export AGENT_MODEL="${MLX_MODEL:-divinetribe/gemma-4-31b-it-abliterated-4bit-mlx}"
+export AGENT_BACKEND="mlx"
+export AGENT_DIALECT="prompted"
+export AGENT_LEASE_NAME="agent-gemma4"
+export AGENT_LEASE_GB="28"
 
-# Override with MLX_MODEL=<your-path-or-hf-id>. Prefers a local flat-folder
-# cache if you already downloaded the model via scripts/download-and-import.sh,
-# so mlx-lm loads directly from disk instead of re-pulling from HF.
-MLX_MODEL_DEFAULT="$(resolve_mlx_model \
-  "$HOME/.cache/huggingface/hub/gemma-4-31b-it-abliterated-4bit-mlx" \
-  "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx")"
-
-ensure_mlx_server "${MLX_MODEL:-$MLX_MODEL_DEFAULT}" \
-  "  Loading Gemma 4 31B Abliterated on MLX (~15 tok/s, 4-bit)..."
-
-clear
-echo ""
-echo "  → Claude Code with LOCAL AI (Gemma 4 31B Abliterated)"
-echo "  → MLX Native: 4-bit IT, abliterated, instruction tuned for coding"
-echo "  → Running on Apple Silicon — no cloud, no API fees"
-echo ""
-
-# Launch from the HQ project dir — same as Divine Tribe HQ.app — so CLAUDE.md
-# auto-discovery picks up the full business stack (this session is NOT --bare,
-# so auto-discovery + auto-memory both work):
-#   .../ineedhemp website/CLAUDE.md ..... store + invoice + email rules
-#   ~/CLAUDE.md ......................... $HOME / HQ session briefing (parent chain)
-#   ~/.claude/CLAUDE.md ................. global private rules
-#   ~/.claude/.../memory/MEMORY.md ...... auto-memory
-HQ_DIR="$HOME/Desktop/PROJECTS/ineedhemp website"
-cd "$HQ_DIR" 2>/dev/null || cd "$HOME"
-
-ANTHROPIC_BASE_URL=http://localhost:4000 \
-CLAUDE_SESSION_LABEL="Gemma 4 · Local" \
-exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
-  --permission-mode bypassPermissions \
-  --settings "$SCRIPT_DIR/lib/local-settings.json" \
-  --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
-  --add-dir "$HQ_DIR" \
-  --mcp-config "$HOME/.claude.json"
+exec "${AGENT_PYTHON:-$HOME/.local/mlx-server/bin/python3}" \
+  "$HOME/Desktop/PROJECTS/Local AI Setup/agent/agent.py"

@@ -1,56 +1,20 @@
 #!/bin/bash
-# Narrative Gemma — Local AI Claude Code with auto-narration
-# Double-click to launch
+# Narrative Gemma — Matt's own terminal agent with auto-narration.
+# Double-click to launch.
 #
-# Boots Gemma 4 31B Abliterated on MLX, then opens Claude Code inside the
-# NarrativeGemma project folder so the CLAUDE.md narration rules are loaded
-# automatically — every reply gets spoken aloud through your TTS of choice.
-#
-# OPTIONAL DEPENDENCY:
-#   ~/.local/bin/speak — a CLI that takes a string and speaks it through
-#   your speakers. Stub it with `say "$@"` (macOS built-in) if you don't
-#   have a fancier voice setup. The CLAUDE.md persona expects this binary.
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/lib/claude-local-common.sh"
-
-CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/NarrativeGemma"
-COMBINED_PROMPT="/tmp/narrative_gemma_combined_prompt.md"
-
-# Override the model with: MLX_MODEL=<your-path-or-hf-id>. Prefers a local
-# flat-folder cache to avoid re-downloading on every fresh launch.
-MLX_MODEL_DEFAULT="$(resolve_mlx_model \
-  "$HOME/.cache/huggingface/hub/gemma-4-31b-it-abliterated-4bit-mlx" \
-  "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx")"
-
-# ── Build combined system prompt ──────────────────────────────────────
-# --bare disables auto-memory, so we hand-stitch the narration rules into
-# a file that the patched MLX server appends to its mode-specific prompt.
-{
-  cat "$PROJECT_DIR/CLAUDE.md"
-} > "$COMBINED_PROMPT"
-
-# Always restart the MLX server so it picks up the MLX_APPEND_SYSTEM_PROMPT_FILE
-# env var. Env vars can only be applied at process start, so even if Gemma is
-# already running we need a fresh process with this var in its environment.
-export MLX_APPEND_SYSTEM_PROMPT_FILE="$COMBINED_PROMPT"
-force_restart_mlx_server "${MLX_MODEL:-$MLX_MODEL_DEFAULT}" \
-  "  Loading Gemma 4 31B Abliterated with narration rules..."
+# Gemma 4 31B Abliterated (4-bit MLX) loaded directly into the shared agent
+# engine; every final answer is spoken aloud through ~/.local/bin/speak
+# (AGENT_SPEAK=1 — narration is done in code now, not by prompt rules).
+# Hands-free dictation binds to this Terminal window if available.
 
 clear
 echo ""
-echo "  → NARRATIVE GEMMA — Local AI with auto-narration"
+echo "  → NARRATIVE GEMMA — local AI with auto-narration"
 echo "  → Gemma 4 31B Abliterated · 4-bit · ~15 tok/s"
 echo "  → Every response spoken aloud via ~/.local/bin/speak"
-echo "  → Running on Apple Silicon — no cloud, no API fees"
 echo ""
 
 # ── Bind hands-free dictation to THIS Terminal window ─────────────────
-# NarrativeClaude.app opens a fresh Terminal via osascript and captures
-# that window's id. We're the inverse — the launcher already runs inside
-# a Terminal window, so we look ourselves up by tty and bind the listener
-# to whatever window+tab owns this shell.
 DICT_DIR="$HOME/NarrateClaude/dictation"
 DICT="$DICT_DIR/bin/dictation"
 STATE_DIR="$DICT_DIR/state"
@@ -94,17 +58,15 @@ JSON
   fi
 fi
 
-cd "$PROJECT_DIR" || exit 1
+cd "$HOME/Desktop/PROJECTS/Local AI Setup/NarrativeGemma" 2>/dev/null || cd "$HOME"
 
-# NOTE: The MLX server's "code mode" silently REPLACES Claude Code's
-# system prompt with a generic coding-assistant prompt that says NOT
-# to use tools for greetings. That kills narration. The exported
-# MLX_APPEND_SYSTEM_PROMPT_FILE above tells the server to append the
-# narration prompt instead.
-ANTHROPIC_BASE_URL=http://localhost:4000 \
-CLAUDE_SESSION_LABEL="Narrative Gemma · Local" \
-exec "$CLAUDE_BIN" --model claude-sonnet-4-6 \
-  --permission-mode bypassPermissions \
-  --settings "$SCRIPT_DIR/lib/local-settings.json" \
-  --append-system-prompt-file "$COMBINED_PROMPT" \
-  --mcp-config "$HOME/.claude.json"
+export AGENT_TITLE="Narrative Gemma 4"
+export AGENT_MODEL="${MLX_MODEL:-divinetribe/gemma-4-31b-it-abliterated-4bit-mlx}"
+export AGENT_BACKEND="mlx"
+export AGENT_DIALECT="prompted"
+export AGENT_LEASE_NAME="agent-gemma4"
+export AGENT_LEASE_GB="28"
+export AGENT_SPEAK=1
+
+exec "${AGENT_PYTHON:-$HOME/.local/mlx-server/bin/python3}" \
+  "$HOME/Desktop/PROJECTS/Local AI Setup/agent/agent.py"

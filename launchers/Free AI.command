@@ -1,12 +1,11 @@
 #!/bin/bash
-# Free AI — Claude Code on the FREE multi-provider cloud stack with auto-failover.
+# Free AI — Matt's own terminal agent on the FREE multi-provider cloud stack.
 # Chain: Gemini -> OpenRouter -> Cerebras -> Groq -> LOCAL DeepSeek V4 Flash.
 # Double-click to launch.
+#
+# The LiteLLM gateway on :4001 speaks the Anthropic wire protocol and does
+# the failover; the shared agent engine talks to it directly.
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/lib/claude-local-common.sh" 2>/dev/null || true
-
-CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 KEYS="$HOME/.config/free-api/keys.env"
 PORT=4001
 
@@ -29,37 +28,15 @@ if ! lsof -i ":${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
   fi
 fi
 
-# Load the gateway master key for Claude Code's auth token.
+# Load the gateway master key for the agent's auth token.
 set -a; [ -f "$KEYS" ] && . "$KEYS"; set +a
 
-clear
-echo ""
-echo "  → Claude Code on the FREE CLOUD STACK (automatic failover)"
-echo "  → CLOUD: Gemma 4 31B → GLM-4.7 → Llama 4 Scout → Nemotron 550B   then LOCAL: DeepSeek V4 on this Mac"
-echo "  → Free tiers · big models · never fully down"
-echo ""
+cd "$HOME/Desktop/PROJECTS/ineedhemp website" 2>/dev/null || cd "$HOME"
 
-export CLAUDE_SESSION_LABEL='Free AI'
-unset ANTHROPIC_API_KEY
-export ANTHROPIC_BASE_URL="http://127.0.0.1:${PORT}"
-export ANTHROPIC_AUTH_TOKEN="${LITELLM_MASTER_KEY:-sk-freeai-local}"
-export ANTHROPIC_MODEL="free-stack"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="free-stack"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="free-stack"
-export ANTHROPIC_DEFAULT_OPUS_MODEL="free-stack"
-export CLAUDE_CODE_SUBAGENT_MODEL="free-stack"
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-export CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1
-export CLAUDE_STREAM_IDLE_TIMEOUT_MS=600000
-export API_TIMEOUT_MS=300000   # free pools can take minutes to fail over; default client timeout gave "The operation timed out"
+export AGENT_TITLE="Free AI Cloud Stack"
+export AGENT_MODEL="free-stack"
+export AGENT_BACKEND="http"
+export AGENT_BASE_URL="http://127.0.0.1:${PORT}"
+export AGENT_AUTH_TOKEN="${LITELLM_MASTER_KEY:-sk-freeai-local}"
 
-# The free backends (Gemini/Groq/Cerebras/OpenRouter) don't emit Anthropic-format
-# "thinking blocks", but ~/.claude/settings.json sets effortLevel=high, which makes
-# Claude Code request one — that is the "Content block is not a thinking block" error.
-# Force thinking off for this stack (real Opus sessions keep high effort).
-export MAX_THINKING_TOKENS=0
-
-exec "$CLAUDE_BIN" \
-  --permission-mode auto \
-  --append-system-prompt-file "$HOME/.claude/CLAUDE.md" \
-  --mcp-config "$HOME/.claude.json"
+exec python3 "$HOME/Desktop/PROJECTS/Local AI Setup/agent/agent.py"
