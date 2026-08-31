@@ -1,22 +1,19 @@
 #!/bin/bash
-# DeepSeek V4 Flash — YOUR terminal, running DeepSeek V4 Flash (284B MoE, local GGUF).
-# Double-click to launch. Same agent engine as Qwen 3.8 Heretic (../agent/agent.py),
-# same firm knowledge; the model serves from ds4-server on :8000 (mmap'd ~87 GB).
+# Qwen 3.8 Heretic — YOUR terminal, running Qwen3.8-27B Heretic (full bf16).
+# Double-click to launch.
 #
-# Like the Qwen launcher: it needs the memory Song Forge holds, so it pauses Song Forge
-# on start and puts it back when you quit (or close the window). It also stops its own
-# ds4-server on exit so the 87 GB isn't left resident.
+# Your own agent engine (../agent/agent.py): framed input box, live context %%,
+# your typed text in soft blue, /resume, slash commands. No cloud, no billing.
+#
+# THE MAX-PRECISION ONE: full bfloat16 (~50 GB), refusals removed, Qwen's
+# newest 27B. It is big enough that it needs Song Forge stopped while it runs,
+# so this launcher pauses Song Forge on start and puts it back when you quit.
 
 set -u
 PLIST="$HOME/Library/LaunchAgents/com.nicedreamz.songforge-m5-stack.plist"
 FORGE_STOPPED=0
 
-stop_ds4() {
-  p=$(lsof -nP -iTCP:8000 -sTCP:LISTEN -t 2>/dev/null | head -1)
-  [ -n "$p" ] && kill "$p" 2>/dev/null && echo "  DeepSeek server stopped."
-}
 restore_forge() {
-  stop_ds4
   [ "$FORGE_STOPPED" = "1" ] || return 0
   echo ""
   echo "  putting Song Forge back..."
@@ -33,6 +30,7 @@ restore_forge() {
 }
 trap restore_forge EXIT INT TERM
 
+# If Song Forge is up, it holds the memory this 50 GB model needs.
 if curl -s -m 3 http://127.0.0.1:8767/api/status 2>/dev/null | grep -q '"ace_up"'; then
   clear
   echo ""
@@ -46,15 +44,16 @@ if curl -s -m 3 http://127.0.0.1:8767/api/status 2>/dev/null | grep -q '"ace_up"
   FORGE_STOPPED=1
   sleep 3
 
-  # Backstop for closing the WINDOW (skips the trap): a nohup'd guardian watches this
-  # launcher's pid and, when it dies by any means, stops ds4-server and brings Song
-  # Forge back — only if it's actually down, so it won't double-start.
+  # Backstop for closing the WINDOW (which skips the trap above). This guardian
+  # is nohup'd so the window-close SIGHUP can't kill it; it watches THIS
+  # launcher's pid and, the moment the launcher dies by any means, brings Song
+  # Forge back — but only if it's actually down, so it won't double-start when
+  # the clean-exit trap already handled it.
   LAUNCHER_PID=$$
   UID_NUM=$(id -u)
   nohup bash -c '
     while kill -0 '"$LAUNCHER_PID"' 2>/dev/null; do sleep 2; done
     sleep 2
-    p=$(lsof -nP -iTCP:8000 -sTCP:LISTEN -t 2>/dev/null | head -1); [ -n "$p" ] && kill "$p" 2>/dev/null
     if ! curl -s -m 3 http://127.0.0.1:8767/api/status >/dev/null 2>&1; then
       launchctl bootstrap "gui/'"$UID_NUM"'" "'"$PLIST"'" 2>/dev/null \
         || launchctl load "'"$PLIST"'" 2>/dev/null
@@ -65,23 +64,25 @@ if curl -s -m 3 http://127.0.0.1:8767/api/status 2>/dev/null | grep -q '"ace_up"
 fi
 
 cd "$HOME/Desktop/PROJECTS/ineedhemp website" 2>/dev/null || cd "$HOME"
-printf '\033]0;DeepSeek V4 Flash\007'
 
-if ! lsof -i :8000 -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "  starting DeepSeek V4 Flash server (:8000)..."
-  "$HOME/.local/bin/ds4-server-up" || { echo "  could not start ds4-server — see /tmp/ds4-server.log"; read -n 1; exit 1; }
-fi
+export AGENT_TITLE="Qwen 3.8 Heretic"
+export AGENT_MODEL="donedynamics/Qwen3.8-27B-heretic-MLX-bf16"
+export AGENT_BACKEND="mlx"
+export AGENT_DIALECT="native"
+# forge_guard caps any non-Song-Forge reservation at ~50GB, so ask for 48 —
+# 56 could NEVER be granted and the launcher hung waiting for it. The model's
+# real ~50GB use slightly overruns 48, which forge_guard charges but never
+# kills; with Song Forge stopped the box has ~100GB free, so no swap.
+export AGENT_LEASE_NAME="agent-qwen38"
+export AGENT_LEASE_GB="48"
 
+# Firm knowledge (store / invoice / email / shipping), refreshed each launch.
 FIRM_KNOWLEDGE="$HOME/Desktop/PROJECTS/Local AI Setup/agent/firm-knowledge.md"
 cp "$HOME/Desktop/PROJECTS/ineedhemp website/CLAUDE.md" "$FIRM_KNOWLEDGE" 2>/dev/null
-export AGENT_TITLE="DeepSeek V4 Flash"
-export AGENT_MODEL="deepseek-v4-flash"
-export AGENT_BACKEND="http"
-export AGENT_BASE_URL="http://127.0.0.1:8000"
-export AGENT_AUTH_TOKEN="dsv4-local"
 export AGENT_PROMPT_FILE="$FIRM_KNOWLEDGE"
 export AGENT_TEMP="0"
 
-echo "  loading the model (first turn after a cold start is slow, then it's warm)..."
-python3 "$HOME/Desktop/PROJECTS/Local AI Setup/agent/agent.py"
+echo "  loading the model (~50 GB, give it a minute)..."
+"${AGENT_PYTHON:-$HOME/.local/mlx-server/bin/python3}" \
+  "$HOME/Desktop/PROJECTS/Local AI Setup/agent/agent.py"
 # (no exec — so the trap runs and Song Forge comes back when you quit)

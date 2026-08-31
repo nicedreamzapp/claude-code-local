@@ -9,7 +9,7 @@ Anthropic response straight back. No translation needed — every backend alread
 speaks Anthropic.
 
 Backends (all Anthropic-compatible):
-  qwen     -> MLX server  :4000  (Qwen3-Coder 30B-A3B 8-bit)  DEFAULT / code / agentic
+  qwen     -> MLX server  :4000  (Qwen 3.6 35B-A3B 8-bit)     DEFAULT / code / agentic
   gemma    -> MLX server  :4002  (Gemma 4)                    quick / trivial
   deepseek -> ds4 server  :8000  (DeepSeek V4 Flash 284B)     huge context / hard reasoning
 
@@ -30,11 +30,12 @@ LAUNCH_LIB = f"{SETUP}/launchers/lib/claude-local-common.sh"
 # helper so the MLX server gets a real local path, not a bare name it tries to
 # download. Matches what Qwen 3 Coder.command / Gemma 4 Code.command pass.
 MLX_MODELS = {
-    # DEFAULT/code lane: Qwen3-Coder-30B-A3B 8-bit. Benchmarked 2026-06-16 as the
-    # better daily driver — faster (~18s vs 134s), fewer tokens (~1.6k vs 12k),
-    # more reliable (the reasoning model stubbed out on simple tasks).
-    "qwen":   ('$HOME/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit',
-               'lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit'),
+    # DEFAULT/code lane: Qwen 3.6 35B-A3B 8-bit — reigning Agent-12 champion
+    # (perfect 20/20 across every sweep, 2026-08-10), ~46 tok/s on the M5.
+    # It REPLACED Qwen3-Coder-30B here on 2026-08-11: two Qwens in the same lane
+    # was 30 GB of duplicate weights, and 3.6 beat the coder on the gauntlet.
+    "qwen":   ('$HOME/.cache/huggingface/hub/Qwen3.6-35B-A3B-MLX-8bit',
+               'lmstudio-community/Qwen3.6-35B-A3B-MLX-8bit'),
     # Qwen3-Coder-Next 80B (Opus-4.6 reasoning-distilled) DELETED 2026-06-22 — benchmarked
     # as useless: bloats/never finishes one-shot builds (0/18 on a hard parser, no code at
     # all), and in agentic mode it won't even call a tool. The plain 30B beat it on

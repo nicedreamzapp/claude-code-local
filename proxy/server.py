@@ -771,6 +771,21 @@ def convert_messages(body):
         role = msg.get("role", "user")
         content = msg.get("content", "")
 
+        # Anthropic beta clients (Claude Code) may place extra system-role
+        # messages INSIDE the conversation. Most chat templates only accept a
+        # leading system message; anything else throws, which drops us to the
+        # raw-text fallback and derails generation (Qwen3.6 "assistant:" loops,
+        # 2026-08-09). Fold stray system messages into the leading one.
+        if role == "system":
+            extra = content if isinstance(content, str) else "\n".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and b.get("type") == "text")
+            if messages and messages[0]["role"] == "system":
+                messages[0]["content"] += "\n\n" + extra
+            else:
+                messages.insert(0, {"role": "system", "content": extra})
+            continue
+
         # Simple string content
         if isinstance(content, str):
             messages.append({"role": role, "content": content})

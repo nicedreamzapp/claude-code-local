@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nicedreamz.oneai-router</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/dtribe/Desktop/PROJECTS/Local AI Setup/smart-router/router.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dtribe/Desktop/PROJECTS/Local AI Setup/smart-router</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/one-ai-router.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/one-ai-router.log</string>
+</dict>
+</plist>

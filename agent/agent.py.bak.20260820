@@ -775,11 +775,7 @@ class HTTPEngine:
             },
             method="POST",
         )
-        # Streaming: the timeout is PER READ, so a free-tier pool that stalls or
-        # dribbles keepalive whitespace ends the turn after 75s idle instead of
-        # freezing the UI for 10 minutes (2026-08-20: agent sat in readline forever
-        # after the gateway had already logged 200). One-shot gets a longer wall.
-        return urllib.request.urlopen(req, timeout=75 if stream else 240)
+        return urllib.request.urlopen(req, timeout=600)
 
     def _step_stream(self, on_text):
         blocks = []
@@ -830,8 +826,7 @@ class HTTPEngine:
     def step(self, on_text):
         try:
             blocks = self._step_stream(on_text)
-        except Exception as e:
-            on_text(f"\n[stream stalled ({type(e).__name__}) — retrying without streaming]\n")
+        except Exception:
             blocks = self._step_once(on_text)
         # Normalize: keep only fields the API accepts when we echo them back.
         clean = []

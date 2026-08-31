@@ -1,7 +1,7 @@
 #!/bin/bash
 # Warm pool — keep the small models loaded simultaneously on separate ports so
 # the router switches between them with ZERO load/unload.
-#   Qwen 3 Coder  :4000   (default / code / agentic)
+#   Qwen 3.6 35B  :4000   (default / code / agentic)
 #   Gemma 4 31B   :4002   (quick / trivial)
 # Gemma moved 4001 -> 4002 on 2026-08-07: the Free AI LiteLLM gateway owns
 # :4001, so the pool's Gemma silently never started AND `stop` (also used by
@@ -59,8 +59,9 @@ case "${1:-start}" in
     # NOTE: Qwen3-VL (vision) is NOT in the pool — it needs mlx-vlm, not this
     # mlx_lm text server (verified: "missing arg tie_word_embeddings"). Vision is
     # a separate setup. Warm pair = the two text models used daily.
-    # DEFAULT coder = Qwen3-Coder-30B-A3B 8-bit (benchmarked best daily driver 2026-06-16).
-    start_one 4000 localclaude-qwen 30 "$HOME/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit" "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit"
+    # DEFAULT coder = Qwen 3.6 35B-A3B 8-bit (Agent-12 champ, 20/20; replaced
+    # Qwen3-Coder-30B on 2026-08-11 — duplicate lane, 3.6 wins).
+    start_one 4000 localclaude-qwen 36 "$HOME/.cache/huggingface/hub/Qwen3.6-35B-A3B-MLX-8bit" "lmstudio-community/Qwen3.6-35B-A3B-MLX-8bit"
     start_one 4002 localclaude-gemma 18 "$HOME/.cache/huggingface/hub/gemma-4-31b-it-abliterated-4bit-mlx" "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx"
     echo "  warm pool starting (Qwen :4000 · Gemma :4002)"
     ;;

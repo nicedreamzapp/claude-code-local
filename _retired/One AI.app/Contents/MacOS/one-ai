@@ -1,0 +1,17 @@
+#!/bin/bash
+# One AI — launches the clean window. Brings the local router + warm pool up
+# if they're not already, then opens the window (no Terminal).
+export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+SETUP="$HOME/Desktop/PROJECTS/Local AI Setup"
+VENV="$HOME/.local/one-ai-window"
+
+# 1) router up?
+if ! lsof -i :4010 -sTCP:LISTEN >/dev/null 2>&1; then
+  nohup python3 "$SETUP/smart-router/router.py" >/tmp/one-ai-router.log 2>&1 &
+  for i in $(seq 1 40); do curl -s http://127.0.0.1:4010/health >/dev/null 2>&1 && break; sleep 0.25; done
+fi
+# 2) warm pool up (instant if already running)
+bash "$SETUP/smart-router/warm_pool.sh" start >/dev/null 2>&1 || true
+
+# 3) open the window (foreground = app stays alive while the window is open)
+exec "$VENV/bin/python" "$VENV/app.py"

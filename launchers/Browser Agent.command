@@ -1,11 +1,11 @@
 #!/bin/bash
-# Brave Browser Agent — Direct MLX + Chrome DevTools Protocol (no Claude Code)
+# Brave Browser Agent — Direct MLX + Chrome DevTools Protocol (pure local)
 # Double-click to launch
 #
 # Override the model with: MLX_MODEL=mlx-community/<model-id>
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/lib/claude-local-common.sh"
+source "$SCRIPT_DIR/lib/local-common.sh"
 
 AGENT="$HOME/.local/browser-agent/agent.py"
 MODEL_NAME="${MLX_MODEL_LABEL:-Gemma 4 31B}"
