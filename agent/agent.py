@@ -508,7 +508,7 @@ endpoints. Never summarize the other emails."""
 
 
 def build_system(model_path):
-    where = (
+    where = os.environ.get("AGENT_WHERE") or (
         "fully locally in-process via MLX on this machine — no cloud, no "
         "external services" if BACKEND == "mlx"
         else f"behind a local gateway at {BASE_URL}"

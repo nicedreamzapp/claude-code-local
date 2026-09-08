@@ -1,20 +1,23 @@
 #!/bin/bash
-# Free Claude — the REAL Claude Code CLI (vision, tools, MCP, /commands) on a free
-# cloud model. No middleware: OpenRouter speaks the Anthropic Messages API natively,
-# so Claude Code talks to it directly. (LiteLLM gateway removed 2026-08-20 — Matt.)
-# Free tier = 50 requests/day, resets 5pm PT. Free tiers may train on what you send.
+# Continue on Free — you hit a Claude Code usage limit; pick up the SAME
+# conversation on the best currently-free OpenRouter model instead of waiting.
+# Claude Code stores every conversation locally (~/.claude/projects/*.jsonl),
+# so the model is just an env var — the history comes along untouched.
 set -a; . "$HOME/.config/free-api/keys.env"; set +a
-cd "$HOME/Desktop/PROJECTS/ineedhemp website" 2>/dev/null || cd "$HOME"
-echo "  Free Claude — real Claude Code on OpenRouter free"
-echo ""
-# Model is chosen LIVE at every launch by pick_free_model.py: best currently-free,
-# tool-capable, >=128K-ctx model on OpenRouter. It reports anything that died since
-# last launch. Pin one with FREE_MODEL=<id> to skip the lookup.
+printf '\033]0;Continue on Free\007'
+clear
+echo "  Continue on Free — resume a Claude Code conversation on a free model"
+
+SEL="$(python3 "$HOME/.config/free-api/pick_session.py")" || exit 0
+DIR="${SEL%%$'\t'*}"; SID="${SEL##*$'\t'}"
+
 if [ -n "$FREE_MODEL" ]; then
   MODEL="$FREE_MODEL"; echo "  Using pinned FREE_MODEL=$MODEL"
 else
   MODEL="$(python3 "$HOME/.config/free-api/pick_free_model.py")"
 fi
+
+export CLAUDE_SESSION_LABEL="Continue on Free"
 export ANTHROPIC_BASE_URL="https://openrouter.ai/api"
 export ANTHROPIC_AUTH_TOKEN="$OPENROUTER_API_KEY"
 export ANTHROPIC_MODEL="$MODEL"
@@ -22,8 +25,10 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL" ANTHROPIC_DEFAULT_SONNET_MODEL="$M
 CTX="$(python3 -c "import json;print(json.load(open('$HOME/.config/free-api/free_model_state.json'))['ctx'])" 2>/dev/null || echo 200000)"
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$CTX" API_TIMEOUT_MS=180000 DISABLE_TELEMETRY=1
 export DT_NO_IMESSAGE=1   # Matt is at this keyboard — see the HQ Free launcher
-printf '\033]0;Free Claude (cloud, free)\007'
+
+cd "$DIR" || { echo "  Could not cd to $DIR"; exit 1; }
 echo ""
+echo "  Resuming in $DIR"
 echo "  Loading $MODEL …"
-exec claude --model "$MODEL" \
+exec claude --resume "$SID" \
   --append-system-prompt-file "$HOME/.config/free-api/mac-guardrails.md" "$@"
