@@ -51,6 +51,7 @@ import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import attachments  # noqa: E402
 import chat_store  # noqa: E402  — same folder, shared with chat.py
 
 try:
@@ -61,7 +62,7 @@ except ImportError:
 # ─── Config ──────────────────────────────────────────────────────────────────
 
 MODEL_DEFAULT = os.environ.get(
-    "AGENT_MODEL", "lmstudio-community/Qwen3.6-35B-A3B-MLX-8bit"
+    "AGENT_MODEL", "donedynamics/Qwen3.8-27B-heretic-VL-MLX-bf16"
 )
 BACKEND = os.environ.get("AGENT_BACKEND", "mlx")
 DIALECT = os.environ.get("AGENT_DIALECT", "native")
@@ -524,6 +525,47 @@ def build_system(model_path):
 # ─── MLX engine (in-process) ────────────────────────────────────────────────
 
 
+def _patch_vlm_config(vlm_utils):
+    """Newer Qwen 3.5-family uploads name their vision tower "qwen3_5_vision";
+    this mlx_vlm only knows it as "qwen3_5". Same tower, so rename on load."""
+    if getattr(vlm_utils, "_agent_patched", False):
+        return
+    original = vlm_utils.load_config
+
+    def load_config(model_path, **kwargs):
+        config = original(model_path, **kwargs)
+        vision = config.get("vision_config") or {}
+        if vision.get("model_type") == "qwen3_5_vision":
+            vision["model_type"] = "qwen3_5"
+        return config
+
+    vlm_utils.load_config = load_config
+    vlm_utils._agent_patched = True
+
+
+def _vlm_overlay(path):
+    """The Qwen 3.8 upload names its image processor "Qwen3VLImageProcessor",
+    which this transformers doesn't have (the class is Qwen2VLImageProcessor).
+    Point at a folder of links to the real files with that one name fixed,
+    instead of editing the download."""
+    cfg = Path(path) / "processor_config.json"
+    try:
+        text = cfg.read_text()
+    except OSError:
+        return str(path)
+    if '"Qwen3VLImageProcessor"' not in text:
+        return str(path)
+    overlay = Path.home() / ".cache" / "local-ai-overlays" / Path(path).name
+    overlay.mkdir(parents=True, exist_ok=True)
+    for f in Path(path).iterdir():
+        link = overlay / f.name
+        if f.name != cfg.name and not link.exists():
+            link.symlink_to(f)
+    (overlay / cfg.name).write_text(
+        text.replace('"Qwen3VLImageProcessor"', '"Qwen2VLImageProcessor"'))
+    return str(overlay)
+
+
 class MLXEngine:
     """Holds the model, the conversation, and the KV cache across turns.
 
@@ -542,6 +584,11 @@ class MLXEngine:
         from mlx_lm.models.cache import make_prompt_cache
         from mlx_lm.sample_utils import make_sampler
 
+        # Models with a vision tower load through mlx_vlm so a dropped picture
+        # reaches the model. mlx_lm would load the same weights text-only.
+        self.vision = (os.environ.get("AGENT_VISION", "1") != "0"
+                       and attachments.has_vision(model_path))
+
         t0 = time.time()
         _load_done = threading.Event()
 
@@ -553,7 +600,17 @@ class MLXEngine:
 
         _ticker = threading.Thread(target=_load_ticker, daemon=True)
         _ticker.start()
-        self.model, self.tokenizer = load(model_path)
+        if self.vision:
+            import mlx_vlm.utils as vlm_utils
+
+            _patch_vlm_config(vlm_utils)
+            self.model, self.processor = vlm_utils.load(
+                _vlm_overlay(vlm_utils.get_model_path(model_path)))
+            self.tokenizer = getattr(self.processor, "tokenizer", self.processor)
+            self._cache_owner = self.model.language_model
+        else:
+            self.model, self.tokenizer = load(model_path)
+            self._cache_owner = self.model
         _load_done.set()
         print(c(f"\r  loading {TITLE}… {time.time()-t0:.1f}s ✓", DIM) + " " * 20)
 
@@ -571,11 +628,13 @@ class MLXEngine:
         env = os.environ.get("AGENT_CTX_LIMIT")
         if env:
             return int(env)
-        for holder in (getattr(self.model, "args", None),
-                       getattr(self.model, "config", None)):
+        cfg = getattr(self.model, "config", None)
+        text_cfg = getattr(cfg, "text_config", None)
+        for holder in (getattr(self.model, "args", None), cfg, text_cfg):
             for key in ("max_position_embeddings", "max_context_length",
                         "context_length"):
-                v = getattr(holder, key, None)
+                v = (holder.get(key) if isinstance(holder, dict)
+                     else getattr(holder, key, None))
                 if isinstance(v, int) and 1024 <= v <= 10_000_000:
                     return v
         v = getattr(self.tokenizer, "model_max_length", None)
@@ -604,7 +663,7 @@ class MLXEngine:
         sliding layers' KV now grows with the transcript instead of capping at
         the window. AGENT_ROLLING_KV=1 restores stock behavior.
         """
-        cache = self._make_cache(self.model)
+        cache = self._make_cache(self._cache_owner)
         if os.environ.get("AGENT_ROLLING_KV") == "1":
             return cache
         from mlx_lm.models.cache import KVCache, RotatingKVCache
@@ -618,16 +677,36 @@ class MLXEngine:
         self.cache = self._new_cache()
         self.cache_tokens = []
 
-    def add_user(self, text):
-        self.messages.append({"role": "user", "content": text})
+    def add_user(self, text, images=()):
+        msg = {"role": "user", "content": text}
+        if images:
+            msg["images"] = list(images)
+        self.messages.append(msg)
 
-    def _render(self):
+    def _template_messages(self):
+        """The transcript as the chat template wants it: a picture becomes an
+        image item ahead of its message's text."""
+        out = []
+        for m in self.messages:
+            m = dict(m)
+            images = m.pop("images", None)
+            if images and self.vision:
+                m["content"] = ([{"type": "image"} for _ in images]
+                                + [{"type": "text", "text": m["content"]}])
+            out.append(m)
+        return out
+
+    def _render(self, tokenize=True):
         # Thinking control. Qwen3.8-class templates default reasoning_effort to
         # 'xhigh' when unset — max reasoning, dumped to screen. AGENT_THINKING
         # picks the level: off (default, terse, no <think> at all) or
         # low/medium/xhigh. Templates that don't know these kwargs ignore them.
         think = os.environ.get("AGENT_THINKING", "off").lower()
-        kw = {"add_generation_prompt": True, "tokenize": True}
+        kw = {"add_generation_prompt": True, "tokenize": tokenize}
+        msgs = self._template_messages()
+        tmpl = self.tokenizer
+        if self.vision and not getattr(self.tokenizer, "chat_template", None):
+            tmpl = self.processor
         if think in ("off", "0", "false", "none"):
             kw["enable_thinking"] = False
         else:
@@ -635,14 +714,14 @@ class MLXEngine:
             kw["reasoning_effort"] = think if think in ("low", "medium", "xhigh") else "low"
         try:
             if DIALECT == "native":
-                return self.tokenizer.apply_chat_template(self.messages, tools=TOOLS, **kw)
-            return self.tokenizer.apply_chat_template(self.messages, **kw)
+                return tmpl.apply_chat_template(msgs, tools=TOOLS, **kw)
+            return tmpl.apply_chat_template(msgs, **kw)
         except Exception:
             # older template without the thinking kwargs
             kw.pop("enable_thinking", None); kw.pop("reasoning_effort", None)
             if DIALECT == "native":
-                return self.tokenizer.apply_chat_template(self.messages, tools=TOOLS, **kw)
-            return self.tokenizer.apply_chat_template(self.messages, **kw)
+                return tmpl.apply_chat_template(msgs, tools=TOOLS, **kw)
+            return tmpl.apply_chat_template(msgs, **kw)
 
     def _prefill_delta(self, tokens):
         """Trim the cache to the shared prefix, return only the new tokens."""
@@ -665,8 +744,102 @@ class MLXEngine:
         self.cache_tokens = list(tokens)
         return tokens[n:], n
 
+    def _generate_vision(self, on_text):
+        """_generate for a model loaded through mlx_vlm: same cache reuse, but the
+        prompt goes through the processor so pictures become image tokens."""
+        from mlx_lm.models.cache import can_trim_prompt_cache, trim_prompt_cache
+        from mlx_vlm.generate import generate_step
+        from mlx_vlm.utils import prepare_inputs
+
+        cfg = self.model.config
+        images = [p for m in self.messages for p in m.get("images", ())]
+        prompt = self._render(tokenize=False)
+        # Gemma's template already writes <bos>; mlx_vlm's own rule.
+        add_special = (getattr(self.processor, "chat_template", None) is None
+                       if cfg.model_type in ("gemma3", "gemma3n", "gemma4") else True)
+        inputs = prepare_inputs(
+            self.processor, images=images or None, prompts=prompt,
+            image_token_index=getattr(cfg, "image_token_index", None),
+            add_special_tokens=add_special,
+        )
+        ids = inputs["input_ids"]
+        pixels = inputs.get("pixel_values")
+        extra = {k: v for k, v in inputs.items()
+                 if k not in ("input_ids", "pixel_values", "attention_mask")}
+        tokens = ids.flatten().tolist()
+
+        n = 0
+        for a, b in zip(self.cache_tokens, tokens):
+            if a != b:
+                break
+            n += 1
+        n = min(n, len(tokens) - 1)
+        image_id = getattr(cfg, "image_token_id", None) or getattr(cfg, "image_token_index", None)
+        in_prefix = image_id is not None and image_id in tokens[:n]
+        in_delta = image_id is not None and image_id in tokens[n:]
+        reuse = n > 0 and not (in_prefix and in_delta)
+        # Qwen-style models place image tokens with their own position ids, which a
+        # partial prefill can't reproduce: any picture in the thread means a full one.
+        if images and hasattr(self.model.language_model, "_rope_deltas"):
+            reuse = False
+        stale = len(self.cache_tokens) - n
+        if reuse and stale > 0:
+            reuse = can_trim_prompt_cache(self.cache) and trim_prompt_cache(self.cache, stale) == stale
+        if not reuse:
+            self.cache = self._new_cache()
+            n = 0
+        if n and not in_delta:
+            pixels = None
+        if isinstance(pixels, list):
+            # Pictures of different sizes come back unstacked, and Gemma's vision
+            # tower can't take them together: encode each one, hand over the result.
+            import mlx.core as mx
+
+            feats = [self.model.embed_vision(self.model.vision_tower(mx.array(p)[None]))
+                     for p in pixels]
+            extra["cached_image_features"] = mx.concatenate(
+                [f.reshape(1, -1, f.shape[-1]) for f in feats], axis=1)
+            pixels = mx.array(pixels[0])[None]
+        if n:
+            status_println(c(f"  [{n} cached + {len(tokens) - n} new]", DIM))
+        self.cache_tokens = list(tokens)
+
+        stop = getattr(self.tokenizer, "stopping_criteria", None)
+        eos = getattr(cfg, "eos_token_id", None)
+        eos = set(eos if isinstance(eos, list) else [eos])
+        detok = self.processor.detokenizer
+        detok.reset()
+        out, made = [], []
+        for token, _ in generate_step(
+            ids[:, n:], self.model, pixels, None,
+            max_tokens=MAX_TOKENS, sampler=self.sampler, prompt_cache=self.cache,
+            **extra,
+        ):
+            self.cache_tokens.append(token)
+            if (stop(token) if stop is not None else token in eos):
+                break
+            made.append(token)
+            detok.add_token(token)
+            piece = detok.last_segment
+            if piece:
+                out.append(piece)
+                on_text(piece)
+            if "</function>" in "".join(out[-6:]):
+                break
+        # The streaming detokenizer can hold back the last word; the full decode
+        # is the truth, so whatever it adds goes out now.
+        full = self.tokenizer.decode(made)
+        shown = "".join(out)
+        if full.startswith(shown) and len(full) > len(shown):
+            on_text(full[len(shown):])
+            return full
+        return shown if shown else full
+
     def _generate(self, on_text):
         from mlx_lm.generate import stream_generate
+
+        if self.vision:
+            return self._generate_vision(on_text)
 
         tokens = self._render()
         delta, reused = self._prefill_delta(tokens)
@@ -930,8 +1103,11 @@ def status_println(text):
 # ─── Agent loop ──────────────────────────────────────────────────────────────
 
 
-def agent_turn(engine, user_text, quiet=False):
-    engine.add_user(user_text)
+def agent_turn(engine, user_text, quiet=False, images=()):
+    if images:
+        engine.add_user(user_text, images)
+    else:
+        engine.add_user(user_text)
     final = ""
 
     CALL_MARKS = ("<tool_call>", "<function=")
@@ -1478,6 +1654,16 @@ def framed_input(engine):
     return line
 
 
+def take_images(line):
+    """Split dropped pictures off a typed line, and say which ones were attached."""
+    text, images = attachments.find_images(line)
+    for p in images:
+        print(c(f"  📎 {os.path.basename(p)}", DIM))
+    if images and not text:
+        text = "What's in this picture?" if len(images) == 1 else "What's in these pictures?"
+    return text, images
+
+
 def repl(engine):
     if readline:
         try:
@@ -1546,9 +1732,12 @@ def repl(engine):
         if line == "/model":
             print(c("  " + engine.model_path, DIM))
             continue
+        images = []
+        if getattr(engine, "vision", False):
+            line, images = take_images(line)
         t0 = time.time()
         try:
-            answer = agent_turn(engine, line)
+            answer = agent_turn(engine, line, images=images)
             _save_session(engine)
             if SPEAK:
                 speak(answer)

@@ -19,6 +19,9 @@ completion from its usage block), not an estimate.
   CHAT_TEMP    sampling temp    (default 0.7)
   CHAT_SYSTEM  system prompt    (default a short plain-chat one)
   CHAT_CTX_LIMIT  context window override (default: read from the model config)
+  CHAT_BACKEND    "server" (default) or "mlx": load the model in this window
+                  instead. The mlx backend is the one that can see pictures —
+                  drop one on the window and it is attached to your message.
 """
 import atexit
 import glob
@@ -33,7 +36,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 BASE = os.getenv("CHAT_URL", "http://127.0.0.1:9420").rstrip("/")
-MODEL = os.getenv("CHAT_MODEL", "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx")
+MODEL = os.getenv("CHAT_MODEL", os.path.expanduser("~/.cache/huggingface/hub/gemma-4-31b-it-abliterated-VL-mlx-bf16"))
 TEMP = float(os.getenv("CHAT_TEMP", "0.7"))
 MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2048"))
 # One system message only — this server 404s when handed two of them.
@@ -52,9 +55,18 @@ SYSTEM = os.getenv(
 )
 
 SHOW_THINKING = os.getenv("CHAT_SHOW_THINKING", "") in ("1", "true", "yes")
+IN_PROCESS = os.getenv("CHAT_BACKEND", "server") == "mlx"
 
 os.environ.setdefault("AGENT_TITLE", MODEL.split("/")[-1])
-os.environ.setdefault("AGENT_LEASE_GB", "0")   # no model in this process, no seat
+if IN_PROCESS:
+    # The model lives in this window: the plain-text dialect, no tool list, and a
+    # memory seat like the agent windows take.
+    os.environ["AGENT_BACKEND"] = "mlx"
+    os.environ["AGENT_DIALECT"] = "prompted"
+    os.environ.setdefault("AGENT_TEMP", str(TEMP))
+    os.environ.setdefault("AGENT_MAX_TOKENS", str(MAX_TOKENS))
+else:
+    os.environ.setdefault("AGENT_LEASE_GB", "0")   # no model in this process, no seat
 
 import agent as A  # noqa: E402  — after AGENT_* env is set; agent.py reads it at import
 import chat_store  # noqa: E402
@@ -69,8 +81,10 @@ def detect_ctx_limit():
     if env:
         return int(env)
     repo = "models--" + MODEL.replace("/", "--")
-    for path in sorted(glob.glob(str(Path.home() / ".cache/huggingface/hub"
-                                      / repo / "snapshots/*/config.json"))):
+    paths = [os.path.join(MODEL, "config.json")] if os.path.isdir(MODEL) else []
+    paths += sorted(glob.glob(str(Path.home() / ".cache/huggingface/hub"
+                                  / repo / "snapshots/*/config.json")))
+    for path in paths:
         try:
             cfg = json.load(open(path))
         except Exception:
@@ -203,6 +217,68 @@ class ChatEngine:
         return reply
 
 
+class LocalChatEngine:
+    """ChatEngine's interface over agent.py's in-process MLXEngine, so the model
+    (and its vision tower) runs in this window with the agent's cache reuse."""
+
+    def __init__(self):
+        self.engine = A.MLXEngine(MODEL)
+        self.model_path = MODEL
+        self.vision = self.engine.vision
+        self.reset()
+
+    @property
+    def messages(self):
+        return self.engine.messages
+
+    def reset(self):
+        self.engine.reset()
+        self.engine.messages[0] = {"role": "system", "content": SYSTEM}
+        self.session = chat_store.new_session(MODEL)
+
+    def restore(self, path):
+        msgs = chat_store.load(path)
+        if not msgs:
+            return 0
+        self.reset()
+        self.engine.messages.extend(msgs)
+        self.session = path
+        return len(msgs)
+
+    def ctx_used(self):
+        return self.engine.ctx_used()
+
+    def ask(self, text, images=()):
+        if images:
+            self.engine.add_user(text, images)
+        else:
+            self.engine.add_user(text)
+        state = {"first": True}
+
+        def on_text(piece):
+            if state["first"]:
+                A.stop_spinner()
+                sys.stdout.write("  ")
+                state["first"] = False
+            sys.stdout.write(piece.replace("\n", "\n  "))
+            sys.stdout.flush()
+
+        A.start_spinner("thinking")
+        try:
+            reply = self.engine._generate(on_text).strip()
+        finally:
+            A.stop_spinner()
+        if not reply:
+            self.engine.messages.pop()
+            return reply
+        sys.stdout.write("\n")
+        self.engine.messages.append({"role": "assistant", "content": reply})
+        note = "".join(f" [picture: {os.path.basename(p)}]" for p in images)
+        chat_store.append(self.session, "user", text + note)
+        chat_store.append(self.session, "assistant", reply)
+        return reply
+
+
 BANNER = f"""{A.BOLD}  {A.TITLE}{A.OFF}  {A.DIM}· plain chat, no tools{A.OFF}
   {A.DIM}/exit  /reset  /context  /think  /model  /system  /resume  /sessions{A.OFF}
   {A.DIM}paste lands in the box · Return sends · ⌃J newline · ↑ history{A.OFF}
@@ -229,6 +305,20 @@ def main():
         A.readline.set_history_length(1000)
         atexit.register(lambda: A.readline.write_history_file(HISTFILE))
 
+    if IN_PROCESS:
+        for sig in (A.signal.SIGTERM, A.signal.SIGHUP):
+            A.signal.signal(sig, lambda *_: (A.release_seat(), sys.exit(0)))
+        atexit.register(A.release_seat)
+        A.acquire_seat()
+        engine = LocalChatEngine()
+        try:
+            session(engine)
+        finally:
+            A.release_seat()
+            print(A.c("  memory released — window may take a few seconds to close", A.DIM))
+            os._exit(0)
+        return
+
     try:
         with urllib.request.urlopen(f"{BASE}/v1/models", timeout=5) as r:
             served = {m["id"] for m in json.load(r)["data"]}
@@ -243,7 +333,10 @@ def main():
         input("  press Return to close… ")
         return
 
-    engine = ChatEngine()
+    session(ChatEngine())
+
+
+def session(engine):
     chat_store.prune(MODEL)
     print(BANNER)
     recent = chat_store.sessions(MODEL, limit=1)
@@ -269,13 +362,17 @@ def main():
             used, limit = engine.ctx_used()
             print(A.c(f"  {used:,} / {limit:,} tokens ({round(used*100/limit)}%)", A.DIM))
             continue
+        if line == "/think" and IN_PROCESS:
+            print(A.c("  reasoning stays off when the model runs in this window", A.DIM))
+            continue
         if line == "/think":
             global SHOW_THINKING
             SHOW_THINKING = not SHOW_THINKING
             print(A.c(f"  reasoning {'shown' if SHOW_THINKING else 'hidden'}", A.DIM))
             continue
         if line == "/model":
-            print(A.c(f"  {engine.model_path}  {A.DIM}via {BASE}", A.DIM))
+            where = "in this window" if IN_PROCESS else f"via {BASE}"
+            print(A.c(f"  {engine.model_path}  {A.DIM}{where}", A.DIM))
             continue
         if line == "/system":
             print(A.c(f"  {SYSTEM}", A.DIM))
@@ -302,9 +399,12 @@ def main():
                       f"— it remembers the whole thread", A.DIM))
             continue
 
+        images = []
+        if getattr(engine, "vision", False):
+            line, images = A.take_images(line)
         t0 = time.time()
         try:
-            engine.ask(line)
+            engine.ask(line, images) if images else engine.ask(line)
         except KeyboardInterrupt:
             print(A.c("\n  interrupted", A.YELLOW))
             engine.messages.pop()          # drop the unanswered user turn
