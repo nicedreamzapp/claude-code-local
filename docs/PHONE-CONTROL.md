@@ -25,7 +25,7 @@ You don't have to be at your Mac to use this. Text a command, get back a full vi
 | "make me a produced video" | Full edit pipeline | 🎬 Title card + subs |
 
 **Full pipeline repo:** [nicedreamzapp/claude-screen-to-phone](https://github.com/nicedreamzapp/claude-screen-to-phone)
-→ Clone it, run `setup.sh`, fill in your phone number. Works with this local AI stack or Claude cloud. Docs in [IMESSAGE_MEDIA_PIPELINE.md](IMESSAGE_MEDIA_PIPELINE.md).
+→ Clone it, run `setup.sh`, fill in your phone number. Works with this local AI stack or Claude cloud. Docs in [IMESSAGE_MEDIA_PIPELINE.md](../IMESSAGE_MEDIA_PIPELINE.md).
 
 ---
 
