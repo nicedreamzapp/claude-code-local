@@ -272,7 +272,7 @@ CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1
 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 ```
 
-**Check it yourself:** during a session, `lsof -p $(pgrep -f claude)` shows only `localhost:4000`.
+**Check it yourself:** during a session, `lsof -a -i -p "$(pgrep -d, -f claude)"` lists the network connections of every Claude process, and the only one is `localhost:4000`.
 
 > 🧹 We **removed LiteLLM** after supply-chain concerns and re-checked every dependency. Anything
 > with unexplained network calls didn't ship. The full audit is in the [full guide](docs/FULL-GUIDE.md).
