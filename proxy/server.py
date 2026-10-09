@@ -864,6 +864,8 @@ def convert_messages(body):
                         )
                     elif not isinstance(result_content, str):
                         result_content = str(result_content)
+                    if tr.get("is_error"):
+                        result_content = "Error: " + result_content
                     # Include tool name context if we can find it
                     messages.append({"role": "tool", "content": result_content})
 
@@ -1233,7 +1235,14 @@ def generate_response(body, on_start=None, on_text=None):
     full_text = ""
     gen_tokens = 0
     finish_reason = "end_turn"
+    stop_sequences = [x for x in body.get("stop_sequences") or [] if isinstance(x, str) and x]
+    stop_sequence = None
     t0 = time.time()
+
+    def find_stop(text, start=0):
+        """Earliest (index, sequence) of a stop sequence at or after start."""
+        hits = [(text.find(x, start), x) for x in stop_sequences if text.find(x, start) >= 0]
+        return min(hits) if hits else None
 
     if on_start:
         on_start(prompt_tokens)
@@ -1256,6 +1265,14 @@ def generate_response(body, on_start=None, on_text=None):
                     finish_reason = "max_tokens"
                 elif response.finish_reason == "stop":
                     finish_reason = "end_turn"
+                # Anthropic stop_sequences: cut the text at the earliest match
+                # and stop generating. Only the tail can hold a new match.
+                hit = stop_sequences and chunk and find_stop(
+                    full_text, max(0, len(full_text) - len(chunk) - max(map(len, stop_sequences))))
+                if hit:
+                    full_text, stop_sequence = full_text[:hit[0]], hit[1]
+                    finish_reason = "stop_sequence"
+                    break
         finally:
             # Give the prefill transients back before the next request (or the
             # error handler) runs. In a finally so a failed generation cannot
@@ -1263,10 +1280,14 @@ def generate_response(body, on_start=None, on_text=None):
             # longer using.
             release_transients()
 
-    _tail = tf.flush()
+    _tail = "" if stop_sequence else tf.flush()
     full_text += _tail
     if on_text and _tail:
         on_text(_tail)
+    hit = stop_sequences and not stop_sequence and find_stop(full_text)
+    if hit:
+        full_text, stop_sequence = full_text[:hit[0]], hit[1]
+        finish_reason = "stop_sequence"
 
     # Cache is updated in-place by MLX — save the token prefix for next request's diff
     _cached_token_prefix = token_ids
@@ -1287,8 +1308,13 @@ def generate_response(body, on_start=None, on_text=None):
     # Clean output (preserves <tool_call> tags)
     text = clean_response(full_text)
 
-    # Parse tool calls from model output
-    tool_calls, remaining_text = parse_tool_calls(text)
+    # Parse tool calls from model output. A request that declared no tools
+    # gets the text as written: otherwise a JSON answer could come back as a
+    # tool_use for a tool the client never offered.
+    if llm_tools:
+        tool_calls, remaining_text = parse_tool_calls(text)
+    else:
+        tool_calls, remaining_text = [], text
 
     # ─── Retry logic: if model expressed intent to use a tool but we got no valid calls ───
     tool_intent_phrases = [
@@ -1402,7 +1428,7 @@ def generate_response(body, on_start=None, on_text=None):
         "model": body.get("model", "claude-sonnet-4-6"),
         "content": content_blocks,
         "stop_reason": finish_reason,
-        "stop_sequence": None,
+        "stop_sequence": stop_sequence,
         "usage": {
             "input_tokens": prompt_tokens,
             "output_tokens": gen_tokens,
@@ -1535,7 +1561,8 @@ def send_anthropic_stream_live(handler, body):
     """
     STOP_MARKERS = ['<turn|>', '<|turn>', '<|im_end|>', '<|endoftext|>',
                     '<|im_start|>', '<|end_of_text|>', '<|eot_id|>']
-    HOLDBACK = 24  # > longest stop marker
+    STOP_MARKERS += [x for x in body.get("stop_sequences") or [] if isinstance(x, str) and x]
+    HOLDBACK = max(24, max(map(len, STOP_MARKERS)))  # >= longest stop marker
 
     msg_id = f"msg_{uuid.uuid4().hex[:24]}"
     model_name = body.get("model", "claude-sonnet-4-6")
