@@ -43,6 +43,25 @@ check(
 )
 
 check(
+    "array inside <tool_call> tags (raised AttributeError, request 500'd)",
+    '<tool_call>[{"name": "Bash", "arguments": {"command": "ls"}}, '
+    '{"name": "Read", "arguments": {"file_path": "/a"}}]</tool_call>',
+    [("Bash", {"command": "ls"}), ("Read", {"file_path": "/a"})],
+)
+
+check(
+    "array inside <|tool_call|> tags",
+    '<|tool_call|>[{"name": "Bash", "arguments": {"command": "ls"}}]<|/tool_call|>',
+    [("Bash", {"command": "ls"})],
+)
+
+check(
+    "non-object JSON inside <tool_call> tags is skipped, not a crash",
+    '<tool_call>"Bash"</tool_call>',
+    [],
+)
+
+check(
     "array of objects (Hermes 4 14B shape, was silently dropped)",
     '```json\n[{"name": "Bash", "arguments": {"command": "ls"}}, '
     '{"name": "Read", "arguments": {"path": "/tmp/x"}}]\n```',

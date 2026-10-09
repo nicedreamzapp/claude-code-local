@@ -512,10 +512,14 @@ def parse_tool_calls(text):
             continue
         try:
             call_data = json.loads(content)
-            tool_calls.append({
-                "name": call_data.get("name", ""),
-                "arguments": call_data.get("arguments", {}),
-            })
+            # Some models wrap several calls in one tag as a JSON array; a
+            # list (or any non-object) here used to raise AttributeError.
+            for cd in call_data if isinstance(call_data, list) else [call_data]:
+                if isinstance(cd, dict):
+                    tool_calls.append({
+                        "name": cd.get("name", ""),
+                        "arguments": cd.get("arguments", {}),
+                    })
         except json.JSONDecodeError:
             # The model often puts Format 2 (<function=X><parameter=Y>...</parameter></function>)
             # inside <tool_call> tags. Handle that first.
@@ -558,10 +562,12 @@ def parse_tool_calls(text):
             remaining = remaining.replace(match.group(0), "", 1)
             try:
                 call_data = json.loads(match.group(1))
-                tool_calls.append({
-                    "name": call_data.get("name", ""),
-                    "arguments": call_data.get("arguments", {}),
-                })
+                for cd in call_data if isinstance(call_data, list) else [call_data]:
+                    if isinstance(cd, dict):
+                        tool_calls.append({
+                            "name": cd.get("name", ""),
+                            "arguments": cd.get("arguments", {}),
+                        })
             except json.JSONDecodeError:
                 recovered = recover_garbled_tool_json(match.group(1))
                 if recovered:
