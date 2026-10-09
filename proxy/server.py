@@ -1390,23 +1390,21 @@ def generate_response(body, on_start=None, on_text=None):
             retry_tf = ThinkingFilter()
             # mlx_lm appends to a prompt cache in place, and the shared one
             # already holds the first attempt's prompt and output, so the full
-            # retry prompt would land after them. Start the retry on a fresh
-            # cache and make it the shared one once it has run. Swapping it into
-            # gen_kwargs too drops the last reference to the old cache before
-            # the retry prefills.
-            _prompt_cache = gen_kwargs["prompt_cache"] = make_prompt_cache(model)
-            _cached_token_prefix = None
+            # retry prompt would land after them. Run the retry on a throwaway
+            # cache instead. The shared cache and its token prefix are left
+            # exactly as the first attempt left them, so the next request
+            # reuses the same KV state it always did.
+            retry_kwargs = dict(gen_kwargs, prompt_cache=make_prompt_cache(model))
             with generate_lock:
                 try:
                     for response in stream_generate(
                         model=model, tokenizer=tokenizer, prompt=retry_tokens,
-                        max_tokens=max_tokens, **gen_kwargs,
+                        max_tokens=max_tokens, **retry_kwargs,
                     ):
                         retry_text += retry_tf.feed(response.text)
                         retry_gen = response.generation_tokens
                 finally:
                     release_transients(" (retry)")
-            _cached_token_prefix = retry_tokens
             retry_text += retry_tf.flush()
 
             retry_text = clean_response(retry_text)
@@ -1623,9 +1621,10 @@ def send_anthropic_stream_live(handler, body):
     msg_id = f"msg_{uuid.uuid4().hex[:24]}"
     model_name = body.get("model", "claude-sonnet-4-6")
     t0 = time.time()
-    state = {"first": None, "lead": True, "buf": "", "done": False}
+    state = {"first": None, "lead": True, "buf": "", "done": False, "raw": ""}
     # The buffered path drops <think>...</think> in clean_response; this path
-    # never runs that, so filter the same blocks out as they stream.
+    # never runs that, so filter the same blocks out as they stream. "raw"
+    # keeps the unfiltered text in case the filter ends up holding everything.
     think = ThinkingFilter()
     think.THINK_START, think.THINK_END = "<think>", "</think>"
 
@@ -1677,6 +1676,7 @@ def send_anthropic_stream_live(handler, body):
     def on_text(chunk):
         if state["done"]:
             return
+        state["raw"] += chunk
         state["buf"] += think.feed(chunk)
         cut = -1
         for m in STOP_MARKERS:
@@ -1714,6 +1714,14 @@ def send_anthropic_stream_live(handler, body):
     try:
         if not state["done"]:
             state["buf"] += think.flush()
+        if state["first"] is None and not state["buf"].strip():
+            # Nothing got past the filter: a <think> block that never closed
+            # (the model hit max_tokens mid-thought) or one with nothing after
+            # it. Send the unfiltered text, as strip_think_tags does for the
+            # buffered path, instead of an empty reply.
+            raw = state["raw"]
+            cuts = [raw.find(m) for m in STOP_MARKERS if m in raw]
+            state["buf"], state["done"] = raw[:min(cuts)] if cuts else raw, False
         if not state["done"] and state["buf"]:
             tail = state["buf"].rstrip()
             state["buf"] = ""
