@@ -746,16 +746,18 @@ def parse_tool_calls(text):
             if tool_calls:
                 remaining = text[:param_matches[0].start()].strip()
 
-    # Deduplicate tool calls (model sometimes emits same call in multiple formats)
+    # Deduplicate tool calls (model sometimes emits same call in multiple formats).
+    # Key on name AND arguments: keying on name alone dropped every parallel
+    # call after the first one to the same tool (Read /a, Read /b -> Read /a).
     seen = set()
     deduped = []
     for tc in tool_calls:
-        key = tc["name"]
+        key = (tc["name"], json.dumps(tc["arguments"], sort_keys=True, default=str))
         if key not in seen:
             seen.add(key)
             deduped.append(tc)
         else:
-            log(f"  Deduped: {key}")
+            log(f"  Deduped: {tc['name']}")
     tool_calls = deduped
 
     # Clean remaining text: strip any leftover <function=...> or <tool_call> fragments

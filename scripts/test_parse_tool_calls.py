@@ -55,4 +55,39 @@ check(
     [("Grep", {"pattern": "foo"})],
 )
 
+check(
+    "two <tool_call> calls to the same tool, different arguments",
+    '<tool_call>{"name": "Read", "arguments": {"file_path": "/a"}}</tool_call>\n'
+    '<tool_call>{"name": "Read", "arguments": {"file_path": "/b"}}</tool_call>',
+    [("Read", {"file_path": "/a"}), ("Read", {"file_path": "/b"})],
+)
+
+check(
+    "two Gemma 4 calls to the same tool, different arguments",
+    '<|tool_call>call:Bash{command:<|"|>ls<|"|>}<tool_call|>'
+    '<|tool_call>call:Bash{command:<|"|>pwd<|"|>}<tool_call|>',
+    [("Bash", {"command": "ls"}), ("Bash", {"command": "pwd"})],
+)
+
+check(
+    "two Llama 3.3 raw JSON calls to the same tool, different arguments",
+    '{"type": "function", "name": "Grep", "parameters": {"pattern": "foo"}}\n'
+    '{"type": "function", "name": "Grep", "parameters": {"pattern": "bar"}}',
+    [("Grep", {"pattern": "foo"}), ("Grep", {"pattern": "bar"})],
+)
+
+check(
+    "two <function=> calls to the same tool, different arguments",
+    '<function=Read><parameter=file_path>/a</parameter></function>\n'
+    '<function=Read><parameter=file_path>/b</parameter></function>',
+    [("Read", {"file_path": "/a"}), ("Read", {"file_path": "/b"})],
+)
+
+check(
+    "the same call emitted twice is still deduped",
+    '<tool_call>{"name": "Bash", "arguments": {"command": "ls"}}</tool_call>\n'
+    '<tool_call>{"name": "Bash", "arguments": {"command": "ls"}}</tool_call>',
+    [("Bash", {"command": "ls"})],
+)
+
 print("all checks passed")
