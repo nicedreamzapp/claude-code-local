@@ -1619,7 +1619,7 @@ def send_anthropic_stream_live(handler, body):
         traceback.print_exc(file=sys.stderr)
         try:
             emit("error", {"type": "error",
-                           "error": {"type": "server_error", "message": str(e)}})
+                           "error": {"type": "api_error", "message": str(e)}})
         except Exception:
             pass
         return
@@ -1671,7 +1671,18 @@ class AnthropicHandler(BaseHTTPRequestHandler):
         path = get_path(self.path)
         content_length = int(self.headers.get('Content-Length', 0))
         raw = self.rfile.read(content_length) if content_length else b'{}'
-        body = json.loads(raw)
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            # A bad body used to raise right here, before any response was
+            # sent, so the client only saw the connection drop.
+            log(f"POST {self.path} invalid JSON body")
+            send_json(self, 400, {"type": "error", "error": {
+                "type": "invalid_request_error",
+                "message": "request body must be a JSON object"}})
+            return
         tools_count = len(body.get("tools", []))
         log(f"POST {self.path} model={body.get('model','-')} max_tokens={body.get('max_tokens','-')} tools={tools_count}")
         if os.environ.get("MLX_DEBUG_REQUEST"):
@@ -1722,7 +1733,8 @@ class AnthropicHandler(BaseHTTPRequestHandler):
                 log(f"  ← ERROR: {e}")
                 import traceback
                 traceback.print_exc(file=sys.stderr)
-                send_json(self, 500, {"error": {"type": "server_error", "message": str(e)}})
+                send_json(self, 500, {"type": "error",
+                                      "error": {"type": "api_error", "message": str(e)}})
         elif path in ("/v1/messages/count_tokens", "/messages/count_tokens"):
             # Claude Code asks for this before every turn and used to fall into
             # the "Unknown POST" branch, which answers {} — no input_tokens at
