@@ -835,8 +835,13 @@ def convert_messages(body):
                 for tr in tool_result_parts:
                     result_content = tr.get("content", "")
                     if isinstance(result_content, list):
+                        # An image (e.g. Read on a .png) used to fall through to
+                        # str(b) and land in the prompt as base64 text, which can
+                        # be hundreds of thousands of tokens. Leave a marker.
                         result_content = "\n".join(
-                            b.get("text", str(b)) for b in result_content
+                            f"[{b.get('type')} omitted]" if b.get("type") in ("image", "document")
+                            else b.get("text", str(b))
+                            for b in result_content
                         )
                     elif not isinstance(result_content, str):
                         result_content = str(result_content)
