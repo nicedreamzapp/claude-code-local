@@ -36,6 +36,26 @@ check(
 )
 
 check(
+    "Gemma 4 boolean argument next to string arguments",
+    '<|tool_call>call:Edit{file_path:<|"|>/a<|"|>,old_string:<|"|>x<|"|>,'
+    'new_string:<|"|>y<|"|>,replace_all:true}<tool_call|>',
+    [("Edit", {"file_path": "/a", "old_string": "x", "new_string": "y",
+               "replace_all": True})],
+)
+
+check(
+    "Gemma 4 number arguments next to a string argument",
+    '<|tool_call>call:Read{file_path:<|"|>/a<|"|>,offset:10,limit:50}<tool_call|>',
+    [("Read", {"file_path": "/a", "offset": 10, "limit": 50})],
+)
+
+check(
+    "Gemma 4 colon inside a string value is not read as a key",
+    '<|tool_call>call:Bash{command:<|"|>echo a:b, c:d<|"|>,timeout:5000}<tool_call|>',
+    [("Bash", {"command": "echo a:b, c:d", "timeout": 5000})],
+)
+
+check(
     "back-to-back objects, no array (existing behavior)",
     '```json\n{"name": "Bash", "arguments": {"command": "ls"}}\n'
     '{"name": "Read", "arguments": {"path": "/tmp/x"}}\n```',

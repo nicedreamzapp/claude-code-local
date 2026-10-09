@@ -466,6 +466,17 @@ def parse_tool_calls(text):
             # Primary: extract key:<|"|>value<|"|> pairs (handles embedded quotes)
             for km in re.finditer(r'(\w+):<\|"\|>(.*?)<\|"\|>', args_str, re.DOTALL):
                 arguments[km.group(1)] = km.group(2)
+            # Gemma 4 writes non-string values bare (replace_all:true, limit:50)
+            # in the same call as <|"|> strings, and they were dropped. Pick them
+            # up from what is left once the strings are removed, so a colon
+            # inside a string value can't be read as a key.
+            if arguments:
+                bare = re.sub(r'\w+:<\|"\|>.*?<\|"\|>', '', args_str, flags=re.DOTALL)
+                for km in re.finditer(r'(\w+):([^,}]+)', bare):
+                    try:
+                        arguments.setdefault(km.group(1), json.loads(km.group(2).strip()))
+                    except ValueError:
+                        pass
             # Fallback: unquoted values (numbers, simple strings)
             if not arguments:
                 for km in re.finditer(r'(\w+):([^,}]+)', args_str):
