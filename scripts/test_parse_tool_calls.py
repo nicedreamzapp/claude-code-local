@@ -129,4 +129,37 @@ check(
     [("Bash", {"command": "ls"})],
 )
 
+check(
+    "arguments sent as a JSON string (OpenAI style) are decoded",
+    '<tool_call>{"name": "Bash", "arguments": "{\\"command\\": \\"ls\\"}"}</tool_call>',
+    [("Bash", {"command": "ls"})],
+)
+
+check(
+    "Gemma 4 hyphenated keys (Grep -i, -n)",
+    '<|tool_call>call:Grep{pattern:<|"|>foo<|"|>,-i:true,-n:true}<tool_call|>',
+    [("Grep", {"pattern": "foo", "-i": True, "-n": True})],
+)
+
+check(
+    "Gemma 4 nested array of objects (TodoWrite todos)",
+    '<|tool_call>call:TodoWrite{todos:[{content:<|"|>a, b<|"|>,status:<|"|>pending<|"|>},'
+    '{content:<|"|>c<|"|>,status:<|"|>done<|"|>}]}<tool_call|>',
+    [("TodoWrite", {"todos": [{"content": "a, b", "status": "pending"},
+                              {"content": "c", "status": "done"}]})],
+)
+
+check(
+    "Gemma 4 call with only bare values keeps numbers as numbers",
+    '<|tool_call>call:Bash{command:<|"|>sleep 1<|"|>}<tool_call|>'
+    '<|tool_call>call:BashOutput{bash_id:7}<tool_call|>',
+    [("Bash", {"command": "sleep 1"}), ("BashOutput", {"bash_id": 7})],
+)
+
+check(
+    "Gemma 4 unquoted string value still falls back to a string",
+    '<|tool_call>call:Bash{command:ls -la}<tool_call|>',
+    [("Bash", {"command": "ls -la"})],
+)
+
 print("all checks passed")

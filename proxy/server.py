@@ -427,6 +427,45 @@ def recover_garbled_tool_json(content, original_text=""):
     return None
 
 
+def _decode_string_args(args):
+    """Some models send arguments as a JSON-encoded string, OpenAI style:
+    "arguments": "{\"command\": \"ls\"}". Decode it so the call doesn't go
+    out with empty input."""
+    if isinstance(args, str):
+        try:
+            decoded = json.loads(args)
+        except ValueError:
+            return args
+        if isinstance(decoded, dict):
+            return decoded
+    return args
+
+
+def _gemma4_args(args_str):
+    """Parse Gemma 4's argument list (the part inside call:Name{...}) as JSON.
+
+    Gemma 4 writes strings as <|"|>text<|"|>, everything else as bare JSON
+    (true, 50, [...], {...}), and object keys unquoted, sometimes with a dash
+    (Grep's -i). Swap the strings out, quote the keys, swap the strings back as
+    JSON strings, and parse. Returns None when that is not valid JSON, so the
+    caller can fall back to the older regex matching.
+    """
+    strings = []
+
+    def stash(m):
+        strings.append(m.group(1))
+        return f"\x00{len(strings) - 1}\x00"
+
+    s = re.sub(r'<\|"\|>(.*?)<\|"\|>', stash, args_str, flags=re.DOTALL)
+    s = re.sub(r'(^|[{,])\s*([\w-]+)\s*:', r'\1"\2":', s)
+    s = re.sub(r'\x00(\d+)\x00', lambda m: json.dumps(strings[int(m.group(1))]), s)
+    try:
+        parsed = json.loads("{" + s + "}")
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def parse_tool_calls(text):
     """Parse tool calls from generated text. Handles multiple formats including
     Gemma 4 native format. Returns (list of tool calls, remaining text).
@@ -462,26 +501,30 @@ def parse_tool_calls(text):
                 continue
             name = name_m.group(1)
             args_str = name_m.group(2)
-            arguments = {}
-            # Primary: extract key:<|"|>value<|"|> pairs (handles embedded quotes)
-            for km in re.finditer(r'(\w+):<\|"\|>(.*?)<\|"\|>', args_str, re.DOTALL):
-                arguments[km.group(1)] = km.group(2)
-            # Gemma 4 writes non-string values bare (replace_all:true, limit:50)
-            # in the same call as <|"|> strings, and they were dropped. Pick them
-            # up from what is left once the strings are removed, so a colon
-            # inside a string value can't be read as a key.
-            if arguments:
-                bare = re.sub(r'\w+:<\|"\|>.*?<\|"\|>', '', args_str, flags=re.DOTALL)
-                for km in re.finditer(r'(\w+):([^,}]+)', bare):
-                    try:
-                        arguments.setdefault(km.group(1), json.loads(km.group(2).strip()))
-                    except ValueError:
-                        pass
-            # Fallback: unquoted values (numbers, simple strings)
-            if not arguments:
-                for km in re.finditer(r'(\w+):([^,}]+)', args_str):
-                    val = km.group(2).strip().strip('"\'')
-                    arguments[km.group(1)] = val
+            # Primary: read the whole argument list as Gemma's JSON dialect, which
+            # covers nested arrays/objects and keys like -i that the regexes miss.
+            arguments = _gemma4_args(args_str)
+            if arguments is None:
+                arguments = {}
+                # Fallback: extract key:<|"|>value<|"|> pairs (handles embedded quotes)
+                for km in re.finditer(r'(\w+):<\|"\|>(.*?)<\|"\|>', args_str, re.DOTALL):
+                    arguments[km.group(1)] = km.group(2)
+                # Gemma 4 writes non-string values bare (replace_all:true, limit:50)
+                # in the same call as <|"|> strings, and they were dropped. Pick them
+                # up from what is left once the strings are removed, so a colon
+                # inside a string value can't be read as a key.
+                if arguments:
+                    bare = re.sub(r'\w+:<\|"\|>.*?<\|"\|>', '', args_str, flags=re.DOTALL)
+                    for km in re.finditer(r'(\w+):([^,}]+)', bare):
+                        try:
+                            arguments.setdefault(km.group(1), json.loads(km.group(2).strip()))
+                        except ValueError:
+                            pass
+                # Fallback: unquoted values (numbers, simple strings)
+                if not arguments:
+                    for km in re.finditer(r'(\w+):([^,}]+)', args_str):
+                        val = km.group(2).strip().strip('"\'')
+                        arguments[km.group(1)] = val
             if arguments:
                 tool_calls.append({"name": name, "arguments": arguments})
                 log(f"  Gemma4 tool call: {name}({list(arguments.keys())})")
@@ -504,7 +547,7 @@ def parse_tool_calls(text):
             obj, end_pos = _decoder.raw_decode(text, idx)
             if obj.get("type") == "function" and "name" in obj:
                 name = obj["name"]
-                arguments = obj.get("parameters", {})
+                arguments = _decode_string_args(obj.get("parameters", {}))
                 tool_calls.append({"name": name, "arguments": arguments})
                 remaining = remaining.replace(text[idx:end_pos], "", 1)
                 log(f"  Llama tool call: {name}({list(arguments.keys())})")
@@ -769,6 +812,7 @@ def parse_tool_calls(text):
     seen = set()
     deduped = []
     for tc in tool_calls:
+        tc["arguments"] = _decode_string_args(tc["arguments"])
         key = (tc["name"], json.dumps(tc["arguments"], sort_keys=True, default=str))
         if key not in seen:
             seen.add(key)
