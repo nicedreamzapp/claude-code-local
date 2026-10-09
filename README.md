@@ -17,6 +17,8 @@
 
 **In one sentence:** a small Python server ([`proxy/server.py`](proxy/server.py)) runs open AI models on your Mac's chip with Apple's MLX and answers Claude Code in Anthropic's own API format, so Claude Code works with no cloud model and no API key.
 
+Other things I built that go with it are under [More from me](#more-from-me).
+
 <p align="center">
   <img src="assets/demo.gif" width="860" alt="Claude Code editing a file with Gemma 4 31B running locally on a Mac, no cloud">
   <br><em>A real session, unedited. Claude Code reads and edits the file, and the AI answering is running on the laptop.</em>
@@ -302,6 +304,21 @@ This isn't the only way to run Claude Code against models you choose, and some o
 - **[claude-code-proxy](https://github.com/1rgs/claude-code-proxy)** translates Claude Code's requests to OpenAI-style APIs. Handy if your model already sits behind an OpenAI-compatible server.
 
 What this repo adds is an MLX-native server tuned for Apple Silicon and for the tool-call formats local models actually emit.
+
+---
+
+## More from me
+
+Other projects of mine that go well with this one:
+
+- **[Trinidad Head](https://github.com/nicedreamzapp/trinidad-head)**: a terminal for Mac and Windows that I wrote from scratch in Rust. Every window gets its own glow color and your own prompts sit in a bubble, so you can tell your local model windows apart and find what you asked in a long Claude Code session.
+- **[NarrateClaude](https://github.com/nicedreamzapp/NarrateClaude)**: a hands-free voice loop for Claude Code on macOS. It turns your speech into text on the Mac, types it into the Terminal running `claude`, and reads the replies aloud. It is the listening half of the voice mode here.
+- **[story-forge](https://github.com/nicedreamzapp/story-forge)**: turns a written story into a finished video on an Apple Silicon Mac. Local models make the stills, motion, voices and music, and the pipeline cuts them together, if you want to see what else your Mac can do without a cloud service.
+- **[RealTimeAICam](https://github.com/nicedreamzapp/RealTimeAICam)**: a free iPhone and Android app that names objects, reads text and describes the scene out loud, with the models running on the phone. Same offline idea as this repo, in your pocket.
+- **[claude-screen-to-phone](https://github.com/nicedreamzapp/claude-screen-to-phone)**: macOS scripts that let you text commands from your iPhone into a Claude Code session on your Mac and get text, images and video back in iMessage. The Phone mode above uses them.
+- **[FiaOS](https://github.com/nicedreamzapp/FiaOS)**: a small self-hosted Python web server that gives you a computer's live screen and a real terminal in any browser, so you can run `claude` on your Mac from another device.
+- **[nemotron-omni-mlx](https://github.com/nicedreamzapp/nemotron-omni-mlx)**: an MLX runtime for the vision and audio towers of NVIDIA's Nemotron 3 Nano Omni. If you want the Nemotron model listed above to look at images and listen to audio on your Mac, not only read text, this is how.
+- **[browser-broker](https://github.com/nicedreamzapp/browser-broker)**: a local proxy on Chrome's debug port that gives each AI agent its own tab in your real, logged-in browser. Useful if you run the Browser mode here next to other browser agents and want them to stop grabbing each other's tabs or yours.
 
 ---
 
