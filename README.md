@@ -17,7 +17,19 @@
 
 </div>
 
-**In one sentence:** a small Python server ([`proxy/server.py`](proxy/server.py)) runs open AI models on your Mac's chip with Apple's MLX and answers Claude Code in Anthropic's own API format, so Claude Code works with no cloud model and no API key.
+**What it is:** a small Python server ([`proxy/server.py`](proxy/server.py)) that runs open AI models on your Mac's chip with Apple's MLX and answers Claude Code in Anthropic's own API format, so Claude Code works with no cloud model and no API key.
+
+**Who it's for:** anyone with an Apple Silicon Mac (M1 or newer, 16 GB or more works best) who uses Claude Code and wants it to keep working when the usage limit hits, when the code can't leave the machine, or when there's no internet.
+
+**Quickstart, three commands:**
+
+```bash
+npm install -g @anthropic-ai/claude-code    # Claude Code itself, skip if you have it
+curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash
+open ~/Desktop/"Claude Local.command"       # or double-click it on your Desktop
+```
+
+The installer checks your Mac, picks a model that fits its memory, downloads it (5 to 30 GB, one time) and makes that Desktop launcher. Details in [Get started](#-get-started), answers to common problems in the [FAQ](#-faq).
 
 Other things I built that go with it are in [the local-first family](#-the-local-first-family).
 
@@ -311,6 +323,71 @@ What this repo adds is an MLX-native server tuned for Apple Silicon and for the 
 
 ---
 
+## ❓ FAQ
+
+The questions that come up most in this repo's [issues](https://github.com/nicedreamzapp/claude-code-local/issues?q=is%3Aissue).
+
+**Does it run on Windows or Linux?**
+No. The server runs models with MLX, which only exists for Apple Silicon Macs. On other machines,
+[Ollama's Anthropic-compatible API](#-other-ways-to-do-this) is the closest route
+([#53](https://github.com/nicedreamzapp/claude-code-local/issues/53)).
+
+**Which model should I run on my Mac?**
+Let `setup.sh` choose. It reads your memory and picks from the [table above](#-what-you-need);
+`bash scripts/doctor.sh` prints the same recommendation and what's already downloaded. Measured
+scores are on the [Agent-12 leaderboard](https://nicedreamzapp.github.io/agent12/). If you run it on
+a 16 GB or 8 GB Mac, please report how it went in
+[#57](https://github.com/nicedreamzapp/claude-code-local/issues/57).
+
+**It crashed or ran out of memory.**
+Almost always a model too big for the Mac. Re-run `bash setup.sh` and take the model it picks, or
+start the server with a smaller one: `MLX_MODEL=divinetribe/Hermes-4-14B-abliterated-4bit-mlx bash scripts/start-mlx-server.sh`
+([#20](https://github.com/nicedreamzapp/claude-code-local/issues/20)).
+
+**The first launch sits on "Loading..." for a long time.**
+The first run downloads the model, 5 to 30 GB, and the launcher doesn't show a progress bar. Check
+that `du -sh ~/.cache/huggingface/hub/*` is growing. Later launches load from disk
+([#15](https://github.com/nicedreamzapp/claude-code-local/issues/15)).
+
+**Replies are slow.**
+Speed depends on the model's size and your chip's memory bandwidth, so a smaller model is the
+biggest lever. The first reply of a session is also slower because Claude Code sends a long system
+prompt that has to be read once; after that the server reuses its prompt cache
+([#13](https://github.com/nicedreamzapp/claude-code-local/issues/13),
+[#28](https://github.com/nicedreamzapp/claude-code-local/issues/28)).
+
+**Claude Code asks me to sign in to a Claude account.**
+Your `claude` is too old, or the launcher didn't set the local key. Update with
+`npm install -g @anthropic-ai/claude-code`, then start it through a launcher, or by hand with
+`ANTHROPIC_BASE_URL=http://localhost:4000 ANTHROPIC_API_KEY=sk-local claude`
+([#26](https://github.com/nicedreamzapp/claude-code-local/issues/26)).
+
+**Can I use a model I already downloaded, like one from LM Studio?**
+Only if it's in MLX format (usually `mlx` in the Hugging Face name). GGUF files won't load. Point the
+server at the folder: `MLX_MODEL=/path/to/your/mlx-model bash scripts/start-mlx-server.sh`
+([#14](https://github.com/nicedreamzapp/claude-code-local/issues/14)).
+
+**Downloads from Hugging Face fail.**
+If Hugging Face is blocked where you are, set a mirror before running setup or a launcher:
+`export HF_ENDPOINT=https://hf-mirror.com` ([#14](https://github.com/nicedreamzapp/claude-code-local/issues/14)).
+
+**Is it really offline, or is it still calling Anthropic?**
+The model runs on your Mac. Claude Code itself also tries to reach Anthropic for things like updates
+and feature flags, so the launchers turn that off with Anthropic's documented settings. Check it with
+the `lsof` command in [Your code stays home](#-your-code-stays-home)
+([#11](https://github.com/nicedreamzapp/claude-code-local/issues/11)).
+
+**Why MLX and not Ollama?**
+MLX is Apple's own framework for its chips, and this server speaks Claude Code's API directly instead
+of translating from another format. Ollama is a good choice too, see
+[Other ways to do this](#-other-ways-to-do-this) ([#2](https://github.com/nicedreamzapp/claude-code-local/issues/2)).
+
+**What's the license?**
+MIT, see [LICENSE](LICENSE) ([#34](https://github.com/nicedreamzapp/claude-code-local/issues/34)).
+Each model keeps its own license.
+
+---
+
 ## 🤝 Help make it better
 
 Ideas, bug reports, a launcher for a model we don't run: open an
@@ -322,7 +399,7 @@ We especially love hearing from people on older or smaller Macs about which mode
 [@asdmoment](https://github.com/asdmoment) · [@kulveersingh](https://github.com/kulveersingh) ·
 [@tripathiprateek](https://github.com/tripathiprateek) · [@tadrianonet](https://github.com/tadrianonet) ·
 [@kevbarns](https://github.com/kevbarns) · [@KaoCSC](https://github.com/KaoCSC) ·
-[@zwolf25](https://github.com/zwolf25). What each of them fixed is in
+[@zwolf25](https://github.com/zwolf25) · [@pratikgx](https://github.com/pratikgx). What each of them fixed is in
 the [full guide](docs/FULL-GUIDE.md#-credits).
 
 ---
