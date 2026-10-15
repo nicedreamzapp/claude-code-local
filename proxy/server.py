@@ -506,6 +506,9 @@ def parse_tool_calls(text):
             # Primary: read the whole argument list as Gemma's JSON dialect, which
             # covers nested arrays/objects and keys like -i that the regexes miss.
             arguments = _gemma4_args(args_str)
+            # call:list_pages{} parses to {}: a real call with no arguments,
+            # not a failed parse, so it has to go out as one.
+            no_args_call = arguments == {}
             if arguments is None:
                 arguments = {}
                 # Fallback: extract key:<|"|>value<|"|> pairs (handles embedded quotes)
@@ -527,7 +530,7 @@ def parse_tool_calls(text):
                     for km in re.finditer(r'(\w+):([^,}]+)', args_str):
                         val = km.group(2).strip().strip('"\'')
                         arguments[km.group(1)] = val
-            if arguments:
+            if arguments or no_args_call:
                 tool_calls.append({"name": name, "arguments": arguments})
                 log(f"  Gemma4 tool call: {name}({list(arguments.keys())})")
             else:
