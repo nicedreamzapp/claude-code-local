@@ -31,6 +31,15 @@ this repo, so edit it here and restart the server.
 
 ## Tests
 
+The suite in `tests/` runs anywhere, Linux included. MLX is stubbed, so it needs no model, no GPU
+and no network, and it also runs the standalone `scripts/test_*.py` checks. CI runs it on every
+push and pull request.
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest
+```
+
 - `python3 scripts/test_parse_tool_calls.py` checks the tool-call parser. It needs no model and no
   running server, so run it before any change to `parse_tool_calls`.
 - `python3 scripts/test_mlx_server.py` sends real Claude Code style requests to a server on

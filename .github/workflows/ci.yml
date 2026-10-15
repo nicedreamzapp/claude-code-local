@@ -1,0 +1,51 @@
+name: CI
+
+# Unit and protocol tests for proxy/server.py, agent/agent.py, smart-router and
+# bin/keepgoing.py. MLX is stubbed, so this runs on a plain Linux runner with no
+# model, no GPU and no network.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install test tools
+        run: pip install -r requirements-dev.txt
+
+      - name: Install ripgrep (agent Grep tool tests)
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ripgrep
+
+      # Syntax errors and undefined names only. The repo has no ruff config,
+      # so this is the narrow "will it even run" check, not a style gate.
+      - name: Ruff (errors only)
+        run: ruff check --select E9,F63,F7,F82 --output-format github .
+
+      - name: Shell syntax (bash -n)
+        run: git ls-files -z '*.sh' '*.command' bin/fia bin/keepgoing | xargs -0 -n1 bash -n
+
+      - name: Tests
+        run: python -m pytest -v

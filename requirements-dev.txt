@@ -1,0 +1,3 @@
+# Test and lint tools for the CI suite in tests/. No MLX needed: the tests stub it.
+pytest==8.3.5
+ruff==0.11.13
