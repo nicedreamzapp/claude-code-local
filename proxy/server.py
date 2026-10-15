@@ -1719,7 +1719,12 @@ def send_anthropic_stream_live(handler, body):
 
     try:
         if not state["done"]:
+            # The think filter holds back its last few chars until flush, so a
+            # stop marker at the very end of the output only shows up here.
             state["buf"] += think.flush()
+            cuts = [state["buf"].find(m) for m in STOP_MARKERS if m in state["buf"]]
+            if cuts:
+                state["buf"] = state["buf"][:min(cuts)]
         if state["first"] is None and not state["buf"].strip():
             # Nothing got past the filter: a <think> block that never closed
             # (the model hit max_tokens mid-thought) or one with nothing after
