@@ -285,11 +285,12 @@ def clean_response(text):
     text = strip_think_tags(text)
     # Llama 3.x: strip function-call prefix token
     text = text.replace('<|python_tag|>', '').strip()
-    # Gemma 4 + Qwen + ChatML: truncate at end-of-turn or start of a new turn
-    for stop_marker in ['<turn|>', '<|turn>', '<|im_end|>', '<|endoftext|>', '<|im_start|>', '<|end_of_text|>', '<|eot_id|>']:
-        if stop_marker in text:
-            text = text[:text.index(stop_marker)].strip()
-            break
+    # Gemma 4 + Qwen + ChatML: truncate at end-of-turn or start of a new turn,
+    # whichever marker comes first (the live stream cuts the same way).
+    cuts = [text.index(m) for m in ['<turn|>', '<|turn>', '<|im_end|>', '<|endoftext|>',
+                                    '<|im_start|>', '<|end_of_text|>', '<|eot_id|>'] if m in text]
+    if cuts:
+        text = text[:min(cuts)].strip()
 
     # Remove reasoning preamble if present
     if text.lstrip().startswith("Thinking"):
