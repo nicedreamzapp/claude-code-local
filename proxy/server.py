@@ -495,7 +495,9 @@ def parse_tool_calls(text):
         for match in gemma4_matches:
             remaining = remaining.replace(match.group(0), "", 1)
             content = match.group(1).strip()
-            name_m = re.match(r'(?:call:)?([\w.]+)\s*\{(.*)\}', content, re.DOTALL)
+            # [\w.-]: MCP tool names carry the server name, which often has a
+            # dash (mcp__chrome-devtools__click), same as Formats 1 and 2 allow.
+            name_m = re.match(r'(?:call:)?([\w.-]+)\s*\{(.*)\}', content, re.DOTALL)
             if not name_m:
                 log(f"  Gemma4 no name match: {content[:80]}")
                 continue
