@@ -9,3 +9,5 @@ __pycache__/
 .claude/
 *.key
 orchestrator.key
+.cache/
+site/

@@ -1,0 +1,131 @@
+# Documentation site for claude-code-local, built with MkDocs Material.
+# Build locally:   pip install -r requirements-docs.txt && mkdocs serve
+# Deployed by:     .github/workflows/docs.yml on push to main
+
+site_name: Claude Code Local
+site_description: >-
+  Run Claude Code on your own Apple Silicon Mac with local MLX models.
+  A single-file Python server speaks the Anthropic Messages API, so Claude Code
+  works with no cloud model and no API key.
+site_author: Matt Macosko
+# Placeholder until the GitHub Pages URL is confirmed.
+site_url: https://nicedreamzapp.github.io/claude-code-local/
+repo_url: https://github.com/nicedreamzapp/claude-code-local
+repo_name: nicedreamzapp/claude-code-local
+edit_uri: edit/main/docs/
+copyright: MIT License. Claude Code is a product of Anthropic; MLX and mlx-lm are Apple projects.
+
+docs_dir: docs
+
+# The Markdown files that were already in docs/ stay where they are, so links
+# from the README and from GitHub keep working. They are not part of the site;
+# the site links to them on GitHub instead.
+exclude_docs: |
+  /BENCHMARKS.md
+  /BROWSER-AGENT.md
+  /CREDITS.md
+  /FULL-GUIDE.md
+  /MAC-BASE-SETUP.md
+  /MCP-SERVERS.md
+  /OTHER-APPS.md
+  /PHONE-CONTROL.md
+  /REPO-LAYOUT.md
+  /TOOL-CALL-RELIABILITY.md
+  /TWITTER-THREAD.md
+  /VOICE-MODE.md
+
+theme:
+  name: material
+  language: en
+  icon:
+    logo: material/console
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.action.edit
+    - navigation.footer
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+plugins:
+  - search
+  # Generates an Open Graph / Twitter card image for every page.
+  # Needs Cairo and Pillow (installed by mkdocs-material[imaging]).
+  - social
+
+# mkdocs writes sitemap.xml (and sitemap.xml.gz) automatically when site_url
+# is set. Submit that URL in Google Search Console after the first deploy.
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/nicedreamzapp/claude-code-local
+      name: claude-code-local on GitHub
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/ZdSqgAxUW
+      name: Discord
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Quickstart: quickstart.md
+  - Configuration: configuration.md
+  - How it works: how-it-works.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - Changelog: changelog.md
+  - Credits: project-credits.md

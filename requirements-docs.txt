@@ -1,0 +1,5 @@
+# Build dependencies for the documentation site (mkdocs.yml + docs/).
+# Used by .github/workflows/docs.yml. Install locally with:
+#   pip install -r requirements-docs.txt
+mkdocs==1.6.1
+mkdocs-material[imaging]==9.7.7
