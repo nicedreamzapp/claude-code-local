@@ -1,0 +1,3 @@
+# Top level dev tools. requirements-dev.txt is generated from this file with hashes.
+pytest==9.1.1
+ruff==0.11.13

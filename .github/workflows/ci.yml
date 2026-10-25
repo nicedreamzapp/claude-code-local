@@ -34,7 +34,7 @@ jobs:
           cache-dependency-path: requirements-dev.txt
 
       - name: Install test tools
-        run: pip install -r requirements-dev.txt
+        run: pip install --require-hashes -r requirements-dev.txt
 
       - name: Install ripgrep (agent Grep tool tests)
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ripgrep
