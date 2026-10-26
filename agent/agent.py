@@ -32,6 +32,14 @@ Env (all optional unless a launcher needs it):
   AGENT_MAX_TOKENS  AGENT_TEMP  AGENT_MAX_STEPS  AGENT_BASH_TIMEOUT
 """
 
+import os as _os
+# Keep model-load chatter (HF download bars, transformers deprecation notes)
+# out of the chat window.
+_os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+_os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+_os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+import warnings as _warnings
+_warnings.filterwarnings("ignore", message=".*use_fast.*")
 import argparse
 import atexit
 import codecs
@@ -42,11 +50,18 @@ import select
 import shutil
 import signal
 import subprocess
+import tempfile
 import sys
-import termios
 import threading
 import time
-import tty
+# Windows (the shop PC, 2026-10-16) has no termios/tty/select-on-stdin. Moonstone drives the
+# engine over a pipe there, which never needs the raw-mode line editor; plain input() does it.
+WIN = os.name == "nt"
+try:
+    import termios
+    import tty
+except ImportError:
+    termios = tty = None
 import unicodedata
 from pathlib import Path
 
@@ -67,12 +82,20 @@ MODEL_DEFAULT = os.environ.get(
 BACKEND = os.environ.get("AGENT_BACKEND", "mlx")
 DIALECT = os.environ.get("AGENT_DIALECT", "native")
 BASE_URL = os.environ.get("AGENT_BASE_URL", "").rstrip("/")
+if "x.ai" in BASE_URL:   # Matt 10/21 11:32 PM: "get rid of grok completely"; paid xAI is never called again
+    sys.exit("  Grok/xAI was removed for good on 10/21; pick a free or local model.")
 AUTH_TOKEN = os.environ.get("AGENT_AUTH_TOKEN", "sk-local")
 LEASE_NAME = os.environ.get("AGENT_LEASE_NAME", "agent-local")
 LEASE_GB = float(os.environ.get("AGENT_LEASE_GB", "36" if BACKEND == "mlx" else "0"))
-MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "4096"))
+# reasoning models (Liquid LFM2.5) spend thousands of tokens thinking before the call; at 4096 the
+# 10/26 video job hit the cap mid-thought, wrote nothing, and then claimed work it never did
+MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS",
+                                "16384" if "lfm" in os.environ.get("AGENT_MODEL", "").lower() else "4096"))
 TEMP = float(os.environ.get("AGENT_TEMP", "0.3"))
-MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "40"))
+# 40 was too few: on 2026-10-18 HQ Free (Body Play deploy) and Grok (HQ Free on the mini/PC)
+# both ran 40 tool rounds of real work and stopped mid-task with nothing on screen. The loop
+# breaker below already stops runaway repeats, so the cap only has to catch true runaways.
+MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "150"))
 BASH_TIMEOUT = int(os.environ.get("AGENT_BASH_TIMEOUT", "120"))
 SPEAK = os.environ.get("AGENT_SPEAK", "") in ("1", "true", "yes")
 PROMPT_FILE = os.environ.get("AGENT_PROMPT_FILE", "")
@@ -104,7 +127,8 @@ TOOLS = [
     {
         "name": "Bash",
         "description": (
-            "Run a shell command and return its combined stdout/stderr. "
+            "Run a shell command (PowerShell on the Windows PC, bash on the Macs) and return "
+            "its combined stdout/stderr. "
             "Non-interactive (stdin is closed) — to hand the user an "
             "interactive program, use `open`, never run it here."
         ),
@@ -185,6 +209,15 @@ TOOLS = [
     },
 ]
 
+# The shared HQ toolbox (browser and more) rides along with the file tools.
+# Never fatal: if it fails to import, the agent still runs with the six above.
+try:
+    import hq_tools  # noqa: E402
+    TOOLS += hq_tools.HQ_TOOLS
+except Exception as _e:  # pragma: no cover
+    hq_tools = None
+    print(f"  (HQ toolbox not loaded: {_e})", file=sys.stderr)
+
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 
 
@@ -196,18 +229,130 @@ def _clip(text, limit=OUT_LIMIT):
     return f"{text[:half]}\n\n... [{dropped} chars elided] ...\n\n{text[-half:]}"
 
 
+# ─── live token count for Moonstone (2026-10-16) ─────────────────────────────
+#
+# Moonstone showed "0 tokens" for every local and cloud chat: it only saw the
+# visible text, and while a model thinks or calls tools nothing is visible.
+# The engines now count what they really generate and, when running under the
+# dock (stdout is a pipe), send it as an invisible terminal code the dock reads:
+# ESC ] 7717 ; tok=<n> BEL. A real terminal ignores unknown codes like this.
+TURN_TOKENS = 0
+_tok_last_emit = 0.0
+
+
+def tok_tick(n=1, exact=None):
+    """Count n more generated tokens (or set the exact total), report at most 4x a second."""
+    global TURN_TOKENS, _tok_last_emit
+    TURN_TOKENS = exact if exact is not None else TURN_TOKENS + n
+    now = time.time()
+    if now - _tok_last_emit >= 0.25:
+        tok_emit()
+
+
+def tok_emit():
+    global _tok_last_emit
+    _tok_last_emit = time.time()
+    # only inside a Moonstone window (the dock sets CLAUDE_SESSION_LABEL for its pipes)
+    if not sys.stdout.isatty() and os.environ.get("CLAUDE_SESSION_LABEL"):
+        sys.stdout.write(f"\033]7717;tok={TURN_TOKENS}\007")
+        sys.stdout.flush()
+
+
+# ─── API cost for Moonstone's balance pill (2026-10-21) ──────────────────────
+#
+# Matt 10/21: the Grok balance on Moonstone's API pill should count down as he uses it. After every
+# paid API reply the engine reports what it cost as an invisible code, ESC ] 7717 ; cost=<usd>;grok BEL,
+# and the dock subtracts it from that account's balance (server.js balLog). xAI's own cost field is used
+# when the reply carries one; otherwise tokens x xAI's list prices per 1M tokens, from
+# docs.x.ai/docs/models (checked 2026-10-21): (input, cached input, output), and a prompt of 200k+
+# tokens bills ALL of its tokens at the long-context row.
+XAI_PRICES = {
+    "grok-4.7": ((2.00, 0.50, 6.00), (4.00, 1.00, 12.00)),
+    "grok-4.6": ((2.00, 0.50, 6.00), (4.00, 1.00, 12.00)),
+    "grok-4.5": ((2.00, 0.30, 6.00), (4.00, 0.60, 12.00)),
+    "grok-4.3": ((1.25, 0.20, 2.50), (2.50, 0.40, 5.00)),
+}
+
+
+def cost_emit(usage):
+    if not usage or "api.x.ai" not in BASE_URL:
+        return
+    if sys.stdout.isatty() or not os.environ.get("CLAUDE_SESSION_LABEL"):
+        return
+    try:
+        ticks = usage.get("cost_in_usd_ticks")
+        if isinstance(ticks, (int, float)) and ticks > 0:
+            usd = ticks / 1e10          # xAI bills in ticks of 1e-10 USD
+        else:
+            model = os.environ.get("AGENT_MODEL", "")
+            rows = XAI_PRICES.get(model)
+            if not rows:
+                print(f"[cost] no xAI price on file for {model}; the Grok balance won't move", file=sys.stderr)
+                return
+            # Anthropic-format usage: input_tokens EXCLUDES cache reads/writes, which come separately
+            inp = int(usage.get("input_tokens") or 0)
+            cached = int(usage.get("cache_read_input_tokens") or 0)
+            wrote = int(usage.get("cache_creation_input_tokens") or 0)
+            out = int(usage.get("output_tokens") or 0)
+            p_in, p_cached, p_out = rows[1] if inp + cached + wrote >= 200_000 else rows[0]
+            usd = ((inp + wrote) * p_in + cached * p_cached + out * p_out) / 1e6
+        if usd > 0:
+            sys.stdout.write(f"\033]7717;cost={usd:.6f};grok\007")
+            sys.stdout.flush()
+    except Exception as e:
+        print(f"[cost] couldn't price this reply: {e}", file=sys.stderr)
+
+
+def ctx_emit(engine):
+    """Context use for Moonstone's memory meter: ESC ] 7717 ; ctx=<used>/<limit> BEL (2026-10-17)."""
+    if sys.stdout.isatty() or not os.environ.get("CLAUDE_SESSION_LABEL"):
+        return
+    try:
+        used, limit = engine.ctx_used()
+    except Exception:
+        return
+    if limit:
+        sys.stdout.write(f"\033]7717;ctx={int(used)}/{int(limit)}\007")
+        sys.stdout.flush()
+
+
 def tool_bash(command):
     # stdin closed on purpose: an interactive program (a game, a REPL, vim)
     # would otherwise inherit the terminal and silently fight the user for
     # keystrokes while its output is captured — invisible chaos for up to
     # BASH_TIMEOUT. Closed stdin makes it EOF/crash out in milliseconds.
-    r = subprocess.run(
-        command, shell=True, capture_output=True, text=True,
-        timeout=BASH_TIMEOUT, stdin=subprocess.DEVNULL,
-    )
-    out = (r.stdout or "") + (r.stderr or "")
-    if r.returncode != 0:
-        out += f"\n[exit {r.returncode}]"
+    # Output goes to a temp file, not a pipe: a job backgrounded with `&`
+    # inherits the pipe and holds it open, so reading a pipe would hang the
+    # whole chat until that job ends (2026-10-16, Bolt sweep). Its own process
+    # group lets a timeout kill the command's children too.
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as f:
+        if WIN:   # on the PC the "Bash" tool runs PowerShell
+            p = subprocess.Popen(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+                stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+        else:
+            p = subprocess.Popen(
+                command, shell=True, stdout=f, stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL, text=True, start_new_session=True,
+            )
+        try:
+            p.wait(timeout=BASH_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            try:
+                if WIN:
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+                else:
+                    os.killpg(p.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            p.wait()
+            raise
+        f.seek(0)
+        out = f.read()
+    if p.returncode != 0:
+        out += f"\n[exit {p.returncode}]"
     return _clip(out.strip()) or "[no output]"
 
 
@@ -263,7 +408,15 @@ def tool_grep(pattern, path=None, glob=None):
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     except FileNotFoundError:
-        return "ERROR: ripgrep (rg) is not installed."
+        # no ripgrep on this machine: plain grep does the same job, just slower (2026-10-16)
+        cmd = ["grep", "-rnI", "-i", "-E", pattern, path or "."]
+        if glob:
+            cmd.insert(1, f"--include={glob}")
+        if os.name == "nt":
+            cmd = ["powershell", "-NoProfile", "-Command",
+                   f"Get-ChildItem -Recurse -File -Path '{path or '.'}' -Include '{glob or '*'}' | "
+                   f"Select-String -Pattern '{pattern}' | Select-Object -First 200 | ForEach-Object {{ \"$($_.Path):$($_.LineNumber):$($_.Line)\" }}"]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if r.returncode == 1:
         return "[no matches]"
     return _clip(r.stdout.strip() or r.stderr.strip() or "[no matches]")
@@ -277,10 +430,17 @@ DISPATCH = {
     "Glob": tool_glob,
     "Grep": tool_grep,
 }
+if hq_tools:
+    DISPATCH.update(hq_tools.HQ_DISPATCH)
 
 
 def run_tool(name, args):
     fn = DISPATCH.get(name)
+    if not fn:
+        # small local models drift to "bash" for "Bash" and never self-correct off the error
+        # (10/26 Liquid LFM2.5: 30 of 46 calls were "bash"); match the name case-insensitively
+        name = next((k for k in DISPATCH if k.lower() == str(name).lower()), name)
+        fn = DISPATCH.get(name)
     if not fn:
         return f"ERROR: no tool named {name}. Available: {', '.join(DISPATCH)}"
     try:
@@ -431,20 +591,89 @@ def _reap_stale_seats():
             print(c(f"  reclaimed orphaned {lease['gb']:.0f}GB seat {lease['id']}", DIM))
 
 
+BIG_RSS_GB = 12  # anything resident above this is "a big model" for the one-at-a-time rule
+
+
+def _other_big_model():
+    """Another model already sitting in memory on this Mac, or None.
+
+    One big model at a time (Matt, 2026-10-16). Two of them together is what
+    crashed the M5 that night: a Bolt test and a Gemma test both loaded, the box
+    swapped 14 GB a minute and the guard started killing things. The guard's
+    seats alone don't stop it: a seat is released the moment a run ends, but the
+    process keeps its ~70 GB for many seconds after, so the next model is
+    granted room that is not actually free yet. So look at what is really
+    resident, not just at the seats.
+    """
+    me = os.getpid()
+    try:
+        out = subprocess.run(["ps", "-axo", "pid=,rss=,command="], capture_output=True,
+                             text=True, timeout=5).stdout
+    except Exception:
+        return None
+    for line in out.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 3 or not parts[0].isdigit():
+            continue
+        pid, rss_gb, cmd = int(parts[0]), int(parts[1]) / 1048576, parts[2]
+        if pid == me or rss_gb < BIG_RSS_GB:
+            continue
+        # the program itself must be Python; a shell whose command line merely
+        # mentions agent.py (a test harness) is not a model
+        if "ython" not in cmd.split()[0].rsplit("/", 1)[-1]:
+            continue
+        # Any Python this big is a model (Bolt's sweep.py counts too), except
+        # Song Forge's own engines: the launchers pause those, and the guard
+        # already manages them.
+        if re.search(r"SongForge|songforge|forge_|acestep|ace_server", cmd):
+            continue
+        name = "another model"
+        if _mem:
+            for lease in (_mem.state() or {}).get("leases", []):
+                if lease.get("name") != LEASE_NAME and lease.get("gb", 0) >= 10:
+                    name = lease["name"]
+        return f"{name} ({rss_gb:.0f} GB, process {pid})"
+    return None
+
+
+def _refuse_second_model(holder):
+    print(c(" refused", RED))
+    print(f"\n  {holder} is already loaded on this Mac.")
+    print("  Only one big model at a time, or both crash. Close that one first,")
+    print("  then open this one again.\n")
+    if sys.stdin.isatty():
+        try:
+            input("  press Return to close… ")
+        except (EOFError, KeyboardInterrupt):
+            pass
+    sys.exit(1)
+
+
 def acquire_seat():
     global _lease_id, _hb_stop
     if LEASE_GB <= 0 or not _load_mem_client():
         return
     _reap_stale_seats()
-    print(c(f"  reserving {LEASE_GB:.0f}GB…", DIM), end="", flush=True)
-    _lease_id, status, _ = _mem.acquire_ex(LEASE_NAME, LEASE_GB, timeout=600)
+    holder = _other_big_model()
+    if holder:
+        print(c(f"  reserving {LEASE_GB:.0f}GB…", DIM), end="", flush=True)
+        _refuse_second_model(holder)
+    # quiet start (2026-10-17): no "reserving… ok" / "[mem] waited" lines unless it fails
+    import contextlib, io
+    with contextlib.redirect_stdout(io.StringIO()):
+        _lease_id, status, _ = _mem.acquire_ex(LEASE_NAME, LEASE_GB, timeout=600)
     if _lease_id:
-        print(c(" ok", DIM))
+        # The wait above can end because another model's run just finished and
+        # gave its seat back while its memory is still resident. Check again.
+        holder = _other_big_model()
+        if holder:
+            release_seat()
+            _refuse_second_model(holder)
     elif status == "refused":
         # The room genuinely isn't there (Song Forge + the One AI warm pool
         # can hold most of the box). Loading 30GB anyway is how the 7/27 swap
         # panic happened — stop and say why instead.
-        print(c(" refused", RED))
+        print(c(f"  reserving {LEASE_GB:.0f}GB… refused", RED))
         print(f"\n  Not enough free memory for this model right now.")
         print(f"  Likely holders: Song Forge engines, the One AI warm pool.")
         print(f"  Free it with:  bash \"$HOME/Desktop/PROJECTS/Local AI Setup/smart-router/warm_pool.sh\" stop")
@@ -456,7 +685,7 @@ def acquire_seat():
                 pass
         sys.exit(1)
     else:
-        print(c(" no guard — proceeding unguarded", DIM))
+        pass  # no guard on this machine: proceed unguarded, silently
     if _lease_id:
         # The guard's TTL is 30 minutes. A session left open longer than that
         # loses its seat, its `asked` protection with it, and the process goes
@@ -496,6 +725,11 @@ what you are about to do.
 
 Be concise. The user is an expert; skip explanations they did not ask for.
 
+Answer a question in ONE sentence: just the thing he asked, nothing else. If he
+asks where something is, give the location and stop. Do not add related facts
+you found along the way (backups, links, other copies, how it gets used). He
+will ask if he wants more.
+
 When the task is a batch ("do the emails", "the easiest one", "go through X"),
 do NOT list or triage everything. Pick exactly ONE item — the single easiest —
 and present only that one, then stop and wait. No lists, no recaps, no rundown
@@ -517,8 +751,30 @@ def build_system(model_path):
     text = SYSTEM.format(title=TITLE, model=model_path, where=where, cwd=os.getcwd())
     if BACKEND == "mlx" and DIALECT == "prompted":
         text += "\n\n" + tools_doc()
+    # House rules for every model: what tools it has, how Matt wants it to
+    # talk, and never to send him somewhere else. Same file for every launcher.
+    for name in ("house.md", "hq-rules.md"):   # our own rules, written for these models
+        f = Path(__file__).with_name(name)
+        if f.exists():
+            text += "\n\n" + f.read_text()
+    # The map of Matt's system (rules, memory index, where everything lives), rebuilt from
+    # the live files at every start by build_map.py; last good copy if that fails (2026-10-24).
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        import build_map
+        smap = build_map.load(os.environ.get("AGENT_CTX_LIMIT"))
+        if smap:
+            text += "\n\n" + smap
+    except Exception:
+        f = Path(__file__).with_name("system-map.md")
+        if f.exists():
+            text += "\n\n" + f.read_text()
     if PROMPT_FILE and Path(PROMPT_FILE).expanduser().exists():
         text += "\n\n" + Path(PROMPT_FILE).expanduser().read_text()
+    # keepgoing hands over the conversation Matt was just having (agent/keepgoing.py)
+    carry = os.environ.get("AGENT_CARRYOVER", "")
+    if carry and Path(carry).exists():
+        text += "\n\n" + Path(carry).read_text()
     return text
 
 
@@ -593,14 +849,24 @@ class MLXEngine:
         _load_done = threading.Event()
 
         def _load_ticker():
-            # live counter so a big bf16 load never looks frozen
-            while not _load_done.wait(0.5):
-                print(c(f"\r  loading {TITLE}… {time.time()-t0:.0f}s", DIM),
-                      end="", flush=True)
+            # One line, no \r ticker: the phone/HQ viewer ignores carriage
+            # returns, so a redrawn counter piled up as a wall of text.
+            # A dot every 5s still shows it isn't frozen. One-shot (-p) has
+            # no viewer, and this line was scored as the answer when a load
+            # got cut off (watchdog, 2026-10-17).
+            if os.environ.get("AGENT_QUIET_LOAD") == "1":
+                _load_done.wait()
+                return
+            print(c(f"  loading {TITLE}", DIM), end="", flush=True)
+            while not _load_done.wait(5):
+                print(c(".", DIM), end="", flush=True)
 
         _ticker = threading.Thread(target=_load_ticker, daemon=True)
         _ticker.start()
         if self.vision:
+            # mlx_vlm pulls in torch, which logs a "Redirects are currently not supported" warning
+            import logging
+            logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").addFilter(lambda r: False)
             import mlx_vlm.utils as vlm_utils
 
             _patch_vlm_config(vlm_utils)
@@ -612,7 +878,8 @@ class MLXEngine:
             self.model, self.tokenizer = load(model_path)
             self._cache_owner = self.model
         _load_done.set()
-        print(c(f"\r  loading {TITLE}… {time.time()-t0:.1f}s ✓", DIM) + " " * 20)
+        _ticker.join()
+        print(c(f" {time.time()-t0:.0f}s ✓", DIM))
 
         self._make_cache = make_prompt_cache
         self.cache = self._new_cache()
@@ -801,7 +1068,8 @@ class MLXEngine:
                 [f.reshape(1, -1, f.shape[-1]) for f in feats], axis=1)
             pixels = mx.array(pixels[0])[None]
         if n:
-            status_println(c(f"  [{n} cached + {len(tokens) - n} new]", DIM))
+            if SHOW_TOOLS:   # Moonstone shows the real token count; this line only cluttered the chat (10/17)
+                status_println(c(f"  [{n} cached + {len(tokens) - n} new]", DIM))
         self.cache_tokens = list(tokens)
 
         stop = getattr(self.tokenizer, "stopping_criteria", None)
@@ -816,6 +1084,7 @@ class MLXEngine:
             **extra,
         ):
             self.cache_tokens.append(token)
+            tok_tick()
             if (stop(token) if stop is not None else token in eos):
                 break
             made.append(token)
@@ -824,8 +1093,22 @@ class MLXEngine:
             if piece:
                 out.append(piece)
                 on_text(piece)
-            if "</function>" in "".join(out[-6:]):
+            tail = "".join(out[-8:])
+            # </function>: a call is done, anything after it is ignored.
+            # </think>: Bolt's template opens <think> in the prompt, and when
+            # the model never closes it the reasoning runs to the token cap
+            # and repeats onto the screen. Stop the moment it closes.
+            if "</function>" in tail or "</think>" in tail:
                 break
+            # 2026-10-18: Bolt's abliterated build falls into a loop repeating
+            # the same two sentences and never emits </think>, so it ran to the
+            # token cap and dumped it all on screen. Same 40-char run three
+            # times means it is stuck; stop and let the caller answer instead.
+            joined = "".join(out)
+            if len(joined) > 400:
+                chunk = joined[-40:]
+                if joined.count(chunk) >= 3:
+                    break
         # The streaming detokenizer can hold back the last word; the full decode
         # is the truth, so whatever it adds goes out now.
         full = self.tokenizer.decode(made)
@@ -844,7 +1127,8 @@ class MLXEngine:
         tokens = self._render()
         delta, reused = self._prefill_delta(tokens)
         if reused:
-            status_println(c(f"  [{reused} cached + {len(delta)} new]", DIM))
+            if SHOW_TOOLS:
+                status_println(c(f"  [{reused} cached + {len(delta)} new]", DIM))
 
         out = []
         for resp in stream_generate(
@@ -853,6 +1137,7 @@ class MLXEngine:
         ):
             out.append(resp.text)
             on_text(resp.text)
+            tok_tick()
             self.cache_tokens.append(resp.token)
             # Stop the moment a call closes — everything after it is ignored
             # anyway, so generating it is waste. Key on </function>, not
@@ -864,7 +1149,33 @@ class MLXEngine:
 
     def step(self, on_text):
         """One assistant turn. Returns (prose, [(call_id, name, args), ...])."""
+        # 2026-10-16 Bolt: with AGENT_THINKING on, the template opens <think> in
+        # the prompt, so the reply is "reasoning</think>answer". Keep the
+        # reasoning off the screen and out of the transcript; a reply with no
+        # </think> at all is shown whole at the end.
+        think_on = os.environ.get("AGENT_THINKING", "off").lower() not in ("off", "0", "false", "none")
+        if think_on:
+            show, seen = on_text, {"done": False, "buf": ""}
+
+            def on_text(chunk):
+                if seen["done"]:
+                    return show(chunk)
+                seen["buf"] += chunk
+                i = seen["buf"].find("</think>")
+                if i != -1:
+                    seen["done"] = True
+                    rest = seen["buf"][i + len("</think>"):].lstrip()
+                    if rest:
+                        show(rest)
         text = self._generate(on_text)
+        if think_on:
+            if "</think>" in text:
+                text = text.split("</think>", 1)[1].lstrip()
+            else:
+                # 2026-10-18: Bolt never closed <think> and this fallback dumped
+                # the whole reasoning loop onto the screen. That text is not
+                # the answer, so show nothing rather than the loop.
+                text = ""
         calls = parse_tool_calls(text)
         prose = strip_calls(text)
         if DIALECT == "native":
@@ -923,12 +1234,60 @@ class HTTPEngine:
     def reset(self):
         self.messages = []
 
-    def add_user(self, text):
-        self.messages.append({"role": "user", "content": [{"type": "text", "text": text}]})
+    vision = True   # cloud models take pictures as image blocks; the REPL only attaches when this is set
+
+    def add_user(self, text, images=()):
+        # pictures go up as image blocks (Grok and most cloud models can see them); 2026-10-16
+        import base64, mimetypes
+        content = []
+        for p in images or ():
+            try:
+                data = base64.b64encode(open(p, "rb").read()).decode()
+            except OSError:
+                continue
+            mt = mimetypes.guess_type(p)[0] or "image/png"
+            content.append({"type": "image", "source": {"type": "base64", "media_type": mt, "data": data}})
+        content.append({"type": "text", "text": text})
+        self.messages.append({"role": "user", "content": content})
+
+    def _fit(self):
+        """Keep the conversation inside the model's window (2026-10-16). Old tool
+        output and pictures shrink first; if that is not enough, the oldest
+        exchanges go, keeping the opening message (the carryover). No extra request."""
+        budget = int(self.ctx_limit * 0.7)
+        if self.ctx_used()[0] <= budget:
+            return
+        keep_tail = 6
+        for m in self.messages[1:-keep_tail]:
+            if not isinstance(m.get("content"), list):
+                continue
+            for b in m["content"]:
+                if b.get("type") == "tool_result":
+                    for inner in b.get("content") or []:
+                        t = inner.get("text", "")
+                        if len(t) > 400:
+                            inner["text"] = t[:400] + " …[trimmed]"
+                elif b.get("type") == "image":
+                    b.clear(); b.update({"type": "text", "text": "[picture removed to save room]"})
+        dropped = 0
+        # drop (assistant, user) pairs right after the opening message so the
+        # alternation and every tool_use/tool_result pairing stay intact
+        while self.ctx_used()[0] > budget and len(self.messages) > keep_tail + 3:
+            if self.messages[1].get("role") != "assistant":
+                break
+            del self.messages[1:3]
+            dropped += 2
+        if dropped and not getattr(self, "_trim_noted", False):
+            first = self.messages[0]
+            if isinstance(first.get("content"), list):
+                first["content"].append({"type": "text", "text":
+                    "[Note: the middle of this conversation was trimmed to fit. Ask Matt if you need something from it.]"})
+                self._trim_noted = True
 
     def _request(self, stream):
         import urllib.request
 
+        self._fit()
         body = {
             "model": self.model_path,
             "max_tokens": MAX_TOKENS,
@@ -937,6 +1296,8 @@ class HTTPEngine:
             "tools": self.tools,
             "stream": stream,
         }
+        if not self.tools:
+            del body["tools"]
         req = urllib.request.Request(
             f"{BASE_URL}/v1/messages",
             data=json.dumps(body).encode(),
@@ -945,6 +1306,10 @@ class HTTPEngine:
                 "anthropic-version": "2023-06-01",
                 "x-api-key": AUTH_TOKEN,
                 "authorization": f"Bearer {AUTH_TOKEN}",
+                # OpenRouter gates some free models to identified apps and
+                # answers 403 without these (2026-10-16, Inkling)
+                "HTTP-Referer": "https://ineedhemp.com",
+                "X-Title": "Divine Tribe HQ",
             },
             method="POST",
         )
@@ -958,6 +1323,7 @@ class HTTPEngine:
         blocks = []
         with self._request(stream=True) as resp:
             cur = None
+            by_index = {}
             for raw in resp:
                 line = raw.decode("utf-8", "replace").strip()
                 if not line.startswith("data:"):
@@ -972,18 +1338,32 @@ class HTTPEngine:
                     if cur.get("type") == "tool_use":
                         cur["_json"] = ""
                     blocks.append(cur)
+                    by_index[ev.get("index", len(blocks) - 1)] = cur
                 elif t == "content_block_delta":
                     d = ev.get("delta") or {}
-                    if d.get("type") == "text_delta" and blocks:
-                        blocks[-1]["text"] = blocks[-1].get("text", "") + d.get("text", "")
+                    # Deltas name their block by index. When a model opens two tool calls at once
+                    # (Grok does), appending to the last block glued one call's arguments onto the
+                    # other and left the first empty (2026-10-16: EmailThread {}, WebSearch {}).
+                    tgt = by_index.get(ev.get("index"), blocks[-1] if blocks else None)
+                    if d.get("type") == "text_delta" and tgt is not None:
+                        tgt["text"] = tgt.get("text", "") + d.get("text", "")
                         on_text(d.get("text", ""))
-                    elif d.get("type") == "input_json_delta" and blocks:
-                        blocks[-1]["_json"] = blocks[-1].get("_json", "") + d.get("partial_json", "")
+                        tok_tick(max(1, len(d.get("text", "")) // 4))
+                    elif d.get("type") == "input_json_delta" and tgt is not None:
+                        tgt["_json"] = tgt.get("_json", "") + d.get("partial_json", "")
+                        tok_tick(max(1, len(d.get("partial_json", "")) // 4))
+                    elif d.get("type") == "thinking_delta":
+                        tok_tick(max(1, len(d.get("thinking", "")) // 4))
+                elif t == "message_start":
+                    self._step_base = TURN_TOKENS   # this reply's real count lands on top of earlier replies
+                elif t == "message_delta" and isinstance((ev.get("usage") or {}).get("output_tokens"), int):
+                    tok_tick(exact=getattr(self, "_step_base", 0) + ev["usage"]["output_tokens"])
                 elif t == "error":
                     raise RuntimeError(str(ev.get("error")))
         for b in blocks:
             if b.get("type") == "tool_use" and "_json" in b:
                 raw = b.pop("_json")
+                b["_merged"] = raw
                 if raw.strip():
                     try:
                         b["input"] = json.loads(raw)
@@ -994,6 +1374,14 @@ class HTTPEngine:
     def _step_once(self, on_text):
         with self._request(stream=False) as resp:
             data = json.loads(resp.read().decode())
+        # OpenRouter reports an upstream overload as HTTP 200 with an error
+        # body (Nemotron 3 Ultra, 2026-10-17). Swallowing it scored as a
+        # blank answer in 2s; raise so the busy-retry path handles it.
+        if data.get("type") == "error" or data.get("error"):
+            raise RuntimeError(str(data.get("error") or data))
+        if isinstance((data.get("usage") or {}).get("output_tokens"), int):
+            tok_tick(data["usage"]["output_tokens"])
+        cost_emit(data.get("usage") or {})   # what this reply cost, for the API balance (10/21)
         blocks = data.get("content") or []
         for b in blocks:
             if b.get("type") == "text":
@@ -1001,11 +1389,60 @@ class HTTPEngine:
         return blocks
 
     def step(self, on_text):
+        import urllib.error
         try:
-            blocks = self._step_stream(on_text)
+            # xAI's stream merges two tool calls into one block (the second call's start never
+            # comes, both argument sets land in the first), so Grok runs unstreamed and every
+            # call comes back intact (2026-10-16). Another provider doing the same is caught
+            # here and that step is asked again unstreamed.
+            if "api.x.ai" in BASE_URL:
+                blocks = self._step_once(on_text)
+            else:
+                blocks = self._step_stream(on_text)
+                if any(b.get("type") == "tool_use" and "}{" in (b.get("_merged") or "") for b in blocks):
+                    blocks = self._step_once(lambda t: None)
         except Exception as e:
-            on_text(f"\n[stream stalled ({type(e).__name__}) — retrying without streaming]\n")
-            blocks = self._step_once(on_text)
+            # free pools answer 429/502/503 when busy, and OpenRouter also reports
+            # an upstream overload as HTTP 200 with an error body. Wait and retry,
+            # then say so plainly instead of dumping a traceback (2026-10-16, Laguna
+            # 429; 2026-10-17, Nemotron 3 Ultra 200 overloaded_error).
+            err = str(e).lower()
+            busy = isinstance(e, urllib.error.HTTPError) or any(
+                w in err for w in ("overload", "rate limit", "too many", "429", "503", "busy"))
+            blocks = None
+            # A retry loop with no exit is a hang: the generic except below does
+            # `continue` and never sets busy, so it loops forever printing
+            # "stream stalled" (2026-10-20, Keep Going handoff). Cap the tries.
+            tries = 0
+            for wait in ((8, 20, 45) if busy else (0, 8, 20)):
+                tries += 1
+                if wait:
+                    on_text(f"\n[the model is busy, trying again in {wait} seconds]\n")
+                    time.sleep(wait)
+                elif not isinstance(e, urllib.error.HTTPError):
+                    on_text(f"\n[stream stalled ({type(e).__name__}) — retrying without streaming]\n")
+                try:
+                    blocks = self._step_once(on_text)
+                    break
+                except urllib.error.HTTPError as e2:
+                    if e2.code not in (408, 429, 500, 502, 503, 504):
+                        msg = (f"This model turned the request down (error {e2.code}); its free server "
+                               "may be broken right now. Pick another one from the menu.")
+                        on_text(msg)
+                        return msg, []
+                    busy = True
+                except Exception as e2:
+                    if any(w in str(e2).lower() for w in ("overload", "rate limit", "too many", "429", "503")):
+                        busy = True
+                    if tries >= 3:
+                        on_text(f"\n[stalled {tries} times — giving up on this turn]\n")
+                        raise
+                    continue
+            if blocks is None:
+                msg = ("This model is too busy right now (OpenRouter's free pool is full). "
+                       "Pick another one from the menu, or try again in a minute.")
+                on_text(msg)
+                return msg, []
         # Normalize: keep only fields the API accepts when we echo them back.
         clean = []
         for b in blocks:
@@ -1100,10 +1537,27 @@ def status_println(text):
         print(text)
 
 
+# Matt wants the token counts and the spinner, not every tool call (2026-10-17).
+# AGENT_SHOW_TOOLS=1 brings the tool lines back for debugging.
+SHOW_TOOLS = os.environ.get("AGENT_SHOW_TOOLS") == "1"
+
+
 # ─── Agent loop ──────────────────────────────────────────────────────────────
 
 
 def agent_turn(engine, user_text, quiet=False, images=()):
+    global TURN_TOKENS
+    TURN_TOKENS = 0
+    tok_emit()
+    try:
+        return _agent_turn(engine, user_text, quiet, images)
+    finally:
+        tok_emit()
+
+
+def _agent_turn(engine, user_text, quiet=False, images=()):
+    if hq_tools:
+        hq_tools.LAST_USER = user_text
     if images:
         engine.add_user(user_text, images)
     else:
@@ -1111,6 +1565,14 @@ def agent_turn(engine, user_text, quiet=False, images=()):
     final = ""
 
     CALL_MARKS = ("<tool_call>", "<function=")
+    # Loop breaker (2026-10-16): Qwen 3.8 ran the same `ls` 35 times in a row on
+    # 10/15 and never answered. The same call with the same arguments a third
+    # time is not run; the model is told to stop and answer instead.
+    seen_calls = {}
+    blocked = 0
+    turn_seen = []     # every tool result this turn, for the draft check
+    checked = False
+    nudged = False
 
     for _ in range(MAX_STEPS):
         # Streaming chunks are a few characters each, so a call tag arrives
@@ -1148,12 +1610,49 @@ def agent_turn(engine, user_text, quiet=False, images=()):
         if printed["any"] and not prose.endswith("\n"):
             print()
 
+        if not calls and not prose.strip() and not nudged:
+            # it ran its tools and then said nothing (2026-10-17: Bolt question got no answer)
+            nudged = True
+            # 10/26: "answer in one sentence" made Liquid stop mid-job and claim a step it never ran;
+            # say plainly to keep working if work is left, and to report only what really ran
+            engine.add_user("Your last turn ended without a tool call or any text. If the task still has "
+                            "steps left, make the next tool call now. If it is truly finished, answer Matt "
+                            "in one sentence, naming only what the tools actually did.")
+            continue
         if not calls:
+            # draft check: one chance to fix a wrong total or a banned customs word
+            # before Matt reads it (2026-10-16 real-task tests)
+            fix = None
+            if hq_tools and not checked and hasattr(hq_tools, "draft_check"):
+                try:
+                    fix = hq_tools.draft_check(prose, "\n".join(turn_seen))
+                except Exception:
+                    fix = None
+            if fix:
+                checked = True
+                if SHOW_TOOLS:
+                    print(c("  ⟲ checking the draft, fixing it", YELLOW))
+                engine.add_user(fix)
+                continue
+            if hq_tools:
+                hq_tools.LAST_ANSWER = prose
             return prose
 
         results = []
         for call_id, name, args in calls:
-            print(c(f"  ⚒ {name}", CYAN) + c(f"  {preview(name, args)}", DIM))
+            sig = name + json.dumps(args, sort_keys=True)
+            seen_calls[sig] = seen_calls.get(sig, 0) + 1
+            if seen_calls[sig] > 2:
+                blocked += 1
+                if SHOW_TOOLS:
+                    print(c(f"  ⟲ {name} again, skipped (already ran it twice)", YELLOW))
+                results.append((call_id, name,
+                    "NOT RUN: you already made this exact call twice and got the same result. "
+                    "Do not repeat it. Use what you already have to answer Matt now, or try "
+                    "a genuinely different approach."))
+                continue
+            if SHOW_TOOLS:
+                print(c(f"  ⚒ {name}", CYAN) + c(f"  {preview(name, args)}", DIM))
             t0 = time.time()
             if not quiet:
                 start_spinner("running")
@@ -1164,15 +1663,58 @@ def agent_turn(engine, user_text, quiet=False, images=()):
             took = time.time() - t0
             head = result.splitlines()[0][:100] if result else ""
             bad = result.startswith("ERROR")
-            print(
-                c(f"    {head}", RED if bad else GREEN)
-                + c(f"  ({took:.1f}s, {len(result)} chars)", DIM)
-            )
+            if SHOW_TOOLS:
+                print(
+                    c(f"    {head}", RED if bad else GREEN)
+                    + c(f"  ({took:.1f}s, {len(result)} chars)", DIM)
+                )
             results.append((call_id, name, result))
+            turn_seen.append(result)
         engine.add_tool_results(results)
         final = prose
+        if blocked >= 3:
+            # it keeps trying anyway: one last turn with no tools to say what it found
+            engine.add_user("Stop using tools. In two or three plain sentences, tell Matt what "
+                            "you found and what is still unknown.")
+            # really take the tools away for this turn: with them still offered, Liquid answered
+            # "stop using tools" with one more tool call, no text, and Moonstone showed
+            # "finished without writing a reply" (10/26)
+            saved = getattr(engine, "tools", None)
+            if saved is not None:
+                engine.tools = []
+            try:
+                prose, _ = engine.step(lambda t: None if quiet else (sys.stdout.write(t), sys.stdout.flush()))
+            finally:
+                if saved is not None:
+                    engine.tools = saved
+            if not prose.strip():
+                prose = ("I got stuck repeating the same tool call and stopped. "
+                         "Say 'keep going' and I'll try a different approach.")
+                if not quiet:
+                    sys.stdout.write(prose)
+            if not quiet:
+                print()
+            return prose
 
-    return final or "[hit step limit]"
+    # Out of steps. Never end silently (2026-10-18: both chats looked dead to Matt because
+    # this path returned a string the REPL never prints). Say what got done and what is left.
+    if not quiet:
+        print(c(f"  ⟲ used all {MAX_STEPS} steps for this message, wrapping up", YELLOW))
+    engine.add_user(f"You have used all {MAX_STEPS} tool steps for this message. Stop using tools. "
+                    "In a few plain sentences tell Matt exactly what you finished, what is still "
+                    "left to do, and that he can say 'keep going' to have you continue.")
+    try:
+        prose, _ = engine.step(lambda t: None if quiet else (sys.stdout.write(t), sys.stdout.flush()))
+    except Exception:
+        prose = ""
+    if not prose.strip():
+        prose = (f"I used all {MAX_STEPS} steps on this one before finishing. "
+                 "Say 'keep going' and I'll pick up where I stopped.")
+        if not quiet:
+            sys.stdout.write(prose)
+    if not quiet:
+        print()
+    return prose
 
 
 def speak(text):
@@ -1184,8 +1726,6 @@ def speak(text):
 
 
 BANNER = f"""{BOLD}  {TITLE}{OFF}
-  {DIM}/exit  /reset  /context  /tools  /cwd  /model  /resume  /sessions{OFF}
-  {DIM}paste lands in the box · Return sends · ⌃J newline · ↑ history{OFF}
 """
 
 
@@ -1271,7 +1811,7 @@ _TTY_ATEXIT = False
 def mute_input():
     """Stop the tty echoing keys — held while the model is generating."""
     global _TTY_ORIG, _TTY_ATEXIT
-    if not sys.stdin.isatty():
+    if termios is None or not sys.stdin.isatty():
         return
     try:
         fd = sys.stdin.fileno()
@@ -1290,7 +1830,7 @@ def mute_input():
 
 def unmute_input():
     """Echo back on, and drop anything typed while it was off."""
-    if _TTY_ORIG is None or not sys.stdin.isatty():
+    if termios is None or _TTY_ORIG is None or not sys.stdin.isatty():
         return
     try:
         fd = sys.stdin.fileno()
@@ -1639,7 +2179,7 @@ class _LineEditor:
 
 def framed_input(engine):
     """Read one message from the framed input box (see _LineEditor)."""
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+    if termios is None or not (sys.stdin.isatty() and sys.stdout.isatty()):
         return input("› ")
     unmute_input()          # echo on, and drop whatever was typed while busy
     try:
@@ -1672,13 +2212,19 @@ def repl(engine):
             pass
         readline.set_history_length(1000)
         atexit.register(lambda: readline.write_history_file(HISTFILE))
-    engine.session = chat_store.new_snapshot(engine.model_path)
+    # A Moonstone window keeps ONE conversation per chat (MOONSTONE_CHAT_ID from the dock): after the dock unloads an
+    # idle local model and restarts it on the next message, the thread picks up where it left off (Matt 10/26)
+    chat_id = re.sub(r"[^\w-]", "", os.environ.get("MOONSTONE_CHAT_ID", ""))[:64]
+    moon_path = (chat_store.ROOT / f"{chat_store._slug(engine.model_path)}--moonstone-{chat_id}.json") if chat_id else None
+    engine.session = moon_path or chat_store.new_snapshot(engine.model_path)
+    if moon_path and moon_path.exists():
+        n = _restore_session(engine, moon_path)
+        if n:
+            print(c(f"  picked up this chat's {n} earlier messages", DIM))
     chat_store.prune(engine.model_path)
-    print(BANNER)
-    _recent = chat_store.sessions(engine.model_path, limit=1)
-    if _recent:
-        print(c(f"  last conversation: {_recent[0][2]} messages, "
-                f"{chat_store.ago(_recent[0][1])} — /resume to pick it up", DIM))
+    if not os.environ.get("AGENT_NO_BANNER"):   # launchers that print their own header (HQ ☁ Free, 10/24)
+        print(BANNER)
+    ctx_emit(engine)
     while True:
         try:
             line = framed_input(engine).strip()
@@ -1691,7 +2237,11 @@ def repl(engine):
             return
         if line == "/reset":
             engine.reset()
-            engine.session = chat_store.new_snapshot(engine.model_path)
+            if moon_path:   # same chat, fresh thread: empty its file so a later reload doesn't bring the old one back
+                engine.session = moon_path
+                _save_session(engine)
+            else:
+                engine.session = chat_store.new_snapshot(engine.model_path)
             print(c("  conversation cleared", DIM))
             continue
         if line == "/sessions":
@@ -1739,6 +2289,7 @@ def repl(engine):
         try:
             answer = agent_turn(engine, line, images=images)
             _save_session(engine)
+            ctx_emit(engine)
             if SPEAK:
                 speak(answer)
         except KeyboardInterrupt:
@@ -1747,7 +2298,7 @@ def repl(engine):
         except Exception as e:
             print(c(f"  error: {type(e).__name__}: {e}", RED))
             continue
-        print(c(f"  {time.time()-t0:.1f}s", DIM))
+        # no elapsed-seconds line: Matt wants the answer only, and the narrator read "3.1s" aloud (2026-10-17)
 
 
 def main():
@@ -1760,7 +2311,7 @@ def main():
     if args.dir:
         os.chdir(os.path.expanduser(args.dir))
 
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    for sig in [x for x in (signal.SIGTERM, signal.SIGINT, getattr(signal, "SIGHUP", None)) if x]:
         signal.signal(sig, lambda *_: (release_seat(), sys.exit(0)))
     atexit.register(release_seat)
 
@@ -1771,7 +2322,7 @@ def main():
         engine = MLXEngine(args.model)
 
     if args.prompt:
-        print(agent_turn(engine, args.prompt, quiet=True))
+        print(agent_turn(engine, args.prompt, quiet=True), flush=True)  # os._exit below skips the flush
     else:
         repl(engine)
     # Skip interpreter/Metal teardown of a ~30GB model — measured 20s+ between
