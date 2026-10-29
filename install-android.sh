@@ -25,8 +25,11 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 echo "→ Updating Termux packages (one time)..."
-yes | pkg upgrade -y -o Dpkg::Options::=--force-confnew >/dev/null
-yes | pkg install -y git python patchelf ripgrep >/dev/null
+# -y plus dpkg's conffile answers instead of `yes |`, which dies of SIGPIPE
+# under pipefail once pkg stops reading.
+DPKG_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confnew)
+pkg upgrade -y "${DPKG_OPTS[@]}" >/dev/null
+pkg install -y "${DPKG_OPTS[@]}" git python patchelf ripgrep >/dev/null
 
 if [ -d "$INSTALL_DIR/.git" ]; then
   echo "→ Updating $INSTALL_DIR..."

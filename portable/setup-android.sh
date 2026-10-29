@@ -24,7 +24,7 @@ command -v patchelf >/dev/null 2>&1 || NEED="$NEED patchelf"
 command -v rg       >/dev/null 2>&1 || NEED="$NEED ripgrep"
 if [ -n "$NEED" ]; then
   echo "→ pkg install$NEED"
-  yes | pkg install -y $NEED
+  pkg install -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confnew $NEED
 fi
 
 PY="$(command -v python3)"
