@@ -597,6 +597,11 @@ def cmd_run(args):
     with open(cfgpath) as f:
         cfg = json.load(f)
 
+    if is_android():
+        # termux-exec otherwise launches binaries through /system/bin/linker64,
+        # so /proc/self/exe is the linker and ggml finds no CPU backend .so next
+        # to it ("no backends are loaded"). Termux's own builds may exec directly.
+        os.environ["TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE"] = "disable"
     env = dict(os.environ)
     sep = ";" if platform.system() == "Windows" else ":"
     if platform.system() == "Windows":
