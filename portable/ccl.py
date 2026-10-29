@@ -412,6 +412,7 @@ def _extract_member(archive, member, dest, mode="r:gz"):
         src = t.extractfile(member)
         if src is None:
             raise SystemExit(f"{member} not found in {archive}")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
         tmp = dest + ".part"
         with open(tmp, "wb") as out:
             shutil.copyfileobj(src, out, 1024 * 1024)

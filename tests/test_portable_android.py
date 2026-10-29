@@ -87,3 +87,26 @@ def test_catalog_phone_model_has_vision_and_tools():
     m = next(x for x in cat["models"] if x["id"] == "qwen3.5-2b")
     assert m["vision"] and "vision_config" in m["vision_evidence"]
     assert {"BF16", "Q8_0"} <= set(m["quants"])
+
+
+def test_extract_member_makes_dirs_and_reads_alpine_style_apk(ccl, tmp_path):
+    # An Alpine .apk is several gzip'd tar segments back to back.
+    import gzip
+    import io
+    import tarfile
+
+    def seg(name, data, eof):
+        raw = io.BytesIO()
+        with tarfile.open(fileobj=raw, mode="w", format=tarfile.USTAR_FORMAT) as t:
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            t.addfile(info, io.BytesIO(data))
+        b = raw.getvalue()
+        return gzip.compress(b if eof else b[:-1024])
+
+    apk = tmp_path / "musl.apk"
+    apk.write_bytes(seg(".SIGN.RSA.x", b"sig", False) + seg("lib/ld-musl-aarch64.so.1", b"ELF", True))
+    dest = tmp_path / "new" / "dir" / "ld-musl-aarch64.so.1"
+    ccl._extract_member(str(apk), "lib/ld-musl-aarch64.so.1", str(dest))
+    assert dest.read_bytes() == b"ELF"
+    assert os.access(dest, os.X_OK)
