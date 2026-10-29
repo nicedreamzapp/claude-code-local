@@ -424,6 +424,58 @@
      }
     ]
    }
+  },
+  {
+   "id": "qwen3.5-2b",
+   "name": "Qwen 3.5 2B",
+   "repo": "unsloth/Qwen3.5-2B-GGUF",
+   "params_b": 2,
+   "active_b": 2,
+   "moe": false,
+   "vision": true,
+   "vision_evidence": "Qwen/Qwen3.5-2B config.json vision_config.model_type=qwen3_5; mmproj mmproj-F16.gguf",
+   "kv_bytes_per_token": 12288,
+   "kv_fixed_bytes": 150994944,
+   "max_ctx": 262144,
+   "llama_args": [
+    "--image-min-tokens",
+    "1024"
+   ],
+   "mmproj": {
+    "path": "mmproj-F16.gguf",
+    "size": 668227264,
+    "sha256": "7035e9cb8d7c6a9681d07eef9a364783e86ea4cd73faab2eabb4f43a101830c7"
+   },
+   "quants": {
+    "BF16": [
+     {
+      "path": "Qwen3.5-2B-BF16.gguf",
+      "size": 3775709216,
+      "sha256": "dc11be2ca4519954a3e4b013ef59497b5522209987d67891851113eda89619f1"
+     }
+    ],
+    "Q8_0": [
+     {
+      "path": "Qwen3.5-2B-Q8_0.gguf",
+      "size": 2012012800,
+      "sha256": "1b04acba824817554f4ce23639bc8495ff70453b8fcb047900c731521021f2c1"
+     }
+    ],
+    "Q6_K": [
+     {
+      "path": "Qwen3.5-2B-Q6_K.gguf",
+      "size": 1574961408,
+      "sha256": "fc90339420b4298887aafb307a4291c55440b730133bbffe6ba9630503dcb548"
+     }
+    ],
+    "Q4_K_M": [
+     {
+      "path": "Qwen3.5-2B-Q4_K_M.gguf",
+      "size": 1280835840,
+      "sha256": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223"
+     }
+    ]
+   }
   }
  ]
 }

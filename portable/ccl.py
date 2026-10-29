@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude Code Local — portable installer/launcher for Linux and Windows.
+"""Claude Code Local — portable installer/launcher for Linux, Windows and Android.
 
 One brain for "download and go" off a Mac:
 
@@ -16,6 +16,10 @@ and portable/catalog.json (model files + sha256, every entry a coding+tool-use
 model WITH a vision tower). Stdlib only; run with -I so a planted module in the
 download dir can't be imported. We depend on exactly two outside things: the
 llama.cpp release binaries (MIT, pinned by tag) and Hugging Face for the weights.
+
+Android (Termux) adds two more pins in portable/android.json: the Claude Code
+linux-arm64-musl binary from npm and Alpine's musl loader to run it, because
+Claude Code ships no Android build and Termux's libc is bionic, not musl.
 """
 import argparse
 import hashlib
@@ -48,8 +52,19 @@ GB = 1024 ** 3
 
 # llama/ggml runtime + OS headroom we don't let the model eat into.
 RUNTIME_OVERHEAD_GB = 1.5
+# Phones: CPU-only llama.cpp needs far less scratch, but Android itself keeps
+# ~2 GB, so the budget is a smaller share of RAM with a smaller overhead.
+ANDROID_OVERHEAD_GB = 0.75
+ANDROID_RAM_SHARE = 0.75
 # Context lengths to try, largest first; we shrink to make a model fit.
 CTX_CHOICES = [16384, 8192, 4096]
+
+
+def is_android():
+    """Termux on Android. Python 3.13+ reports platform.system() == 'Android';
+    older Termux Pythons report 'Linux', so also check the Termux prefix."""
+    return (platform.system() == "Android" or sys.platform == "android"
+            or os.environ.get("PREFIX", "").startswith("/data/data/com.termux"))
 
 
 def home():
@@ -60,6 +75,11 @@ def home():
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
         return os.path.join(base, "claude-code-local")
     return os.path.join(os.path.expanduser("~"), ".cache", "claude-code-local")
+
+
+def load_android_pins():
+    with open(os.path.join(HERE, "android.json")) as f:
+        return json.load(f)
 
 
 def load_pins():
@@ -81,7 +101,7 @@ def _run(cmd):
 
 def detect_ram_gb():
     try:
-        if platform.system() == "Linux":
+        if platform.system() in ("Linux", "Android"):
             with open("/proc/meminfo") as f:
                 for line in f:
                     if line.startswith("MemTotal:"):
@@ -137,10 +157,12 @@ def detect_gpu():
 
 
 def detect_hw():
-    osname = platform.system()
+    osname = "Android" if is_android() else platform.system()
     mach = platform.machine().lower()
     arch = "arm64" if mach in ("arm64", "aarch64") else "x64"
-    accel, vram = detect_gpu()
+    # Phones run llama.cpp on the CPU (the pinned android-arm64 build); no
+    # nvidia-smi/vulkaninfo probing there.
+    accel, vram = (None, 0.0) if osname == "Android" else detect_gpu()
     # Vulkan on an integrated GPU (e.g. Intel Iris Xe) advertises itself but
     # exposes no usable device-local heap to size; under 2 GB we cannot offload,
     # so treat it as CPU-only. This keeps the pinned-build pick, ngl, and the RAM
@@ -172,6 +194,15 @@ def pick_llama_assets(hw, pins):
         if accel == "vulkan":
             return [find(assets, "bin-ubuntu-vulkan", a)]
         return [find(assets, f"bin-ubuntu-{a}" if a == "arm64" else "bin-ubuntu-x64")]
+
+    if o == "Android":
+        if a != "arm64":
+            raise SystemExit(f"Android needs an arm64 phone. Detected: {a}")
+        # Exact name: the "-snapdragon" variant also contains "bin-android-arm64".
+        name = f"llama-{pins['tag']}-bin-android-arm64.tar.gz"
+        if name not in assets:
+            raise SystemExit(f"No pinned llama.cpp asset {name}. Run portable/tools/refresh_pins.py to repin.")
+        return [name]
 
     if o == "Windows":
         if accel == "cuda":
@@ -208,9 +239,13 @@ def quant_weight_bytes(entry, quant):
     return sum(f["size"] for f in entry["quants"][quant]) + entry["mmproj"]["size"]
 
 
-def model_need_gb(entry, quant, ctx):
+def model_need_gb(entry, quant, ctx, overhead_gb=RUNTIME_OVERHEAD_GB):
     kv = entry["kv_fixed_bytes"] + entry["kv_bytes_per_token"] * ctx
-    return (quant_weight_bytes(entry, quant) + kv) / GB + RUNTIME_OVERHEAD_GB
+    return (quant_weight_bytes(entry, quant) + kv) / GB + overhead_gb
+
+
+def overhead_for(hw):
+    return ANDROID_OVERHEAD_GB if hw.get("os") == "Android" else RUNTIME_OVERHEAD_GB
 
 
 def pick_model(hw, catalog):
@@ -221,9 +256,13 @@ def pick_model(hw, catalog):
     if some model fits at BF16/Q8 we take the strongest such model; only if none
     does do we fall back (and the caller prints that loudly).
     """
+    ov = overhead_for(hw)
     if hw["accel"] in ("cuda", "rocm", "vulkan") and hw["vram_gb"] >= 2:
         budget = hw["vram_gb"] * 0.92
         budget_src = f"{hw['vram_gb']:.0f} GB VRAM ({hw['accel']})"
+    elif hw.get("os") == "Android":
+        budget = hw["ram_gb"] * ANDROID_RAM_SHARE
+        budget_src = f"{hw['ram_gb']:.0f} GB phone RAM (CPU)"
     else:
         budget = hw["ram_gb"] * 0.80
         budget_src = f"{hw['ram_gb']:.0f} GB system RAM (CPU)"
@@ -241,7 +280,7 @@ def pick_model(hw, catalog):
             raise SystemExit(f"CCL_MODEL_ID={forced} is not in the catalog")
         for ctx in CTX_CHOICES:
             for q in PRECISION_ORDER:
-                if q in entry["quants"] and model_need_gb(entry, q, ctx) <= budget:
+                if q in entry["quants"] and model_need_gb(entry, q, ctx, ov) <= budget:
                     return entry, q, ctx, budget, budget_src
         # nothing fits even at the smallest ctx — use lowest precision + ctx anyway
         q = [p for p in PRECISION_ORDER if p in entry["quants"]][-1]
@@ -254,7 +293,7 @@ def pick_model(hw, catalog):
             for q in PRECISION_ORDER:
                 if q not in entry["quants"]:
                     continue
-                if model_need_gb(entry, q, ctx) <= budget:
+                if model_need_gb(entry, q, ctx, ov) <= budget:
                     if anyq is None:
                         anyq = (entry, q, ctx)
                     if q in ("BF16", "Q8_0") and hiq is None:
@@ -265,7 +304,7 @@ def pick_model(hw, catalog):
             return chosen + (budget, budget_src)
     raise SystemExit(
         f"Nothing in the catalog fits your budget ({budget_src}). The smallest "
-        f"vision model needs about {model_need_gb(catalog['models'][-1], 'Q4_K_M', CTX_CHOICES[-1]):.1f} GB.")
+        f"vision model needs about {model_need_gb(catalog['models'][-1], 'Q4_K_M', CTX_CHOICES[-1], ov):.1f} GB.")
 
 
 def precision_reason(entry, quant):
@@ -285,18 +324,19 @@ def precision_reason(entry, quant):
 
 # ─── Download with resume + checksum ──────────────────────────────────────────
 
-def sha256_file(path):
-    h = hashlib.sha256()
+def sha256_file(path, algo="sha256"):
+    h = hashlib.new(algo)
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
 
 
-def download(url, dest, size=None, sha256=None):
+def download(url, dest, size=None, sha256=None, sha512=None):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     if os.path.exists(dest) and size and os.path.getsize(dest) == size:
-        if sha256 is None or sha256_file(dest) == sha256:
+        if ((sha256 is None or sha256_file(dest) == sha256)
+                and (sha512 is None or sha256_file(dest, "sha512") == sha512)):
             print(f"  have {os.path.basename(dest)} ({size/GB:.2f} GB), skipping")
             return dest
     existing = os.path.getsize(dest) if os.path.exists(dest) else 0
@@ -333,6 +373,11 @@ def download(url, dest, size=None, sha256=None):
         if got != sha256:
             raise SystemExit(f"CHECKSUM MISMATCH for {dest}\n  expected {sha256}\n  got      {got}")
         print(f"  verified {os.path.basename(dest)} (sha256 ok)")
+    if sha512:
+        got = sha256_file(dest, "sha512")
+        if got != sha512:
+            raise SystemExit(f"CHECKSUM MISMATCH for {dest}\n  expected sha512 {sha512}\n  got             {got}")
+        print(f"  verified {os.path.basename(dest)} (sha512 ok)")
     return dest
 
 
@@ -354,6 +399,78 @@ def find_llama_server(root):
     return None
 
 
+# ─── Android: Claude Code itself ──────────────────────────────────────────────
+#
+# Claude Code ships linux/mac/windows binaries but none for Android, and Termux's
+# libc is bionic. Its linux-arm64-musl build needs only libc.musl, which is one
+# file: Alpine's musl loader. So we pin both, verify both, point the binary's ELF
+# interpreter at our loader (patchelf --set-interpreter, nothing else touched;
+# setting an rpath too corrupts the bundled JS), and wrap it in $PREFIX/bin/claude.
+
+def _extract_member(archive, member, dest, mode="r:gz"):
+    with tarfile.open(archive, mode, ignore_zeros=True) as t:
+        src = t.extractfile(member)
+        if src is None:
+            raise SystemExit(f"{member} not found in {archive}")
+        tmp = dest + ".part"
+        with open(tmp, "wb") as out:
+            shutil.copyfileobj(src, out, 1024 * 1024)
+    os.replace(tmp, dest)
+    os.chmod(dest, 0o755)
+    return dest
+
+
+def android_wrapper_text(claude_bin, musl_dir):
+    return f"""#!/data/data/com.termux/files/usr/bin/bash
+# Claude Code under Termux: the linux-arm64-musl build, run through a pinned
+# musl loader. Written by claude-code-local (portable/ccl.py install).
+# termux-exec must not route this exec through Android's linker (it is a musl
+# binary), and its bionic LD_PRELOAD cannot load into a musl process.
+export TERMUX_EXEC__SYSTEM_LINKER_EXEC__MODE=disable
+export LD_LIBRARY_PATH="{musl_dir}${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"
+export SHELL="${{SHELL:-$PREFIX/bin/bash}}"
+# The auto-updater would swap in an unpatched binary that cannot start here.
+export DISABLE_AUTOUPDATER=1
+unset LD_PRELOAD
+exec "{claude_bin}" "$@"
+"""
+
+
+def install_claude_android(h, force=False):
+    pins = load_android_pins()
+    c, m = pins["claude"], pins["musl"]
+    musl_dir = os.path.join(h, "musl", m["version"])
+    loader = os.path.join(musl_dir, "ld-musl-aarch64.so.1")
+    if not os.path.exists(loader) or force:
+        arc = os.path.join(h, "dl", os.path.basename(m["url"]))
+        download(m["url"], arc, m["size"], m["sha256"])
+        _extract_member(arc, "lib/ld-musl-aarch64.so.1", loader)
+    soname = os.path.join(musl_dir, "libc.musl-aarch64.so.1")
+    if not os.path.lexists(soname):
+        os.symlink("ld-musl-aarch64.so.1", soname)
+
+    cdir = os.path.join(h, "claude", c["version"])
+    claude_bin = os.path.join(cdir, "claude")
+    if not os.path.exists(claude_bin) or force:
+        arc = os.path.join(h, "dl", os.path.basename(c["url"]))
+        download(c["url"], arc, c["size"], sha512=c["sha512"])
+        os.makedirs(cdir, exist_ok=True)
+        _extract_member(arc, "package/claude", claude_bin)
+        patchelf = shutil.which("patchelf")
+        if not patchelf:
+            raise SystemExit("patchelf not found. In Termux:  pkg install patchelf")
+        subprocess.run([patchelf, "--set-interpreter", loader, claude_bin], check=True)
+        os.remove(arc)  # ~130 MB we no longer need on a phone
+
+    prefix = os.environ.get("PREFIX") or "/data/data/com.termux/files/usr"
+    wrapper = os.path.join(prefix, "bin", "claude")
+    with open(wrapper, "w") as f:
+        f.write(android_wrapper_text(claude_bin, musl_dir))
+    os.chmod(wrapper, 0o755)
+    print(f"Claude Code: {c['version']} (linux-arm64-musl via musl {m['version']}) → {wrapper}")
+    return wrapper
+
+
 # ─── install / run ────────────────────────────────────────────────────────────
 
 def cmd_detect():
@@ -366,7 +483,7 @@ def cmd_detect():
     print(f"llama.cpp: {llama['tag']} → {assets[0]}")
     entry, quant, ctx, budget, budget_src = pick_model(hw, catalog)
     print(f"Model:    {entry['name']}  [{quant}]  ctx {ctx}")
-    print(f"Fits:     need {model_need_gb(entry, quant, ctx):.1f} GB of {budget:.1f} GB usable ({budget_src})")
+    print(f"Fits:     need {model_need_gb(entry, quant, ctx, overhead_for(hw)):.1f} GB of {budget:.1f} GB usable ({budget_src})")
     print(f"Precision: {precision_reason(entry, quant)}")
     print(f"Vision:   {entry['vision_evidence']}")
     return hw, entry, quant, ctx
@@ -398,7 +515,7 @@ def cmd_install(args):
     # 2. model
     entry, quant, ctx, budget, budget_src = pick_model(hw, catalog)
     print(f"Model:       {entry['name']}  [{quant}]  ctx {ctx}")
-    print(f"             need {model_need_gb(entry, quant, ctx):.1f} GB of "
+    print(f"             need {model_need_gb(entry, quant, ctx, overhead_for(hw)):.1f} GB of "
           f"{budget:.1f} GB usable ({budget_src})")
     print(f"Precision:   {precision_reason(entry, quant)}")
     print(f"Vision:      {entry['vision_evidence']}\n")
@@ -413,6 +530,11 @@ def cmd_install(args):
     mm = entry["mmproj"]
     mmproj_path = os.path.join(modeldir, os.path.basename(mm["path"]))
     download(base + mm["path"], mmproj_path, mm["size"], mm["sha256"])
+
+    claude_bin = None
+    if hw["os"] == "Android":
+        print("")
+        claude_bin = install_claude_android(h, force=args.force)
 
     # first shard is what llama-server loads; it auto-finds the rest
     model_paths.sort()
@@ -430,6 +552,7 @@ def cmd_install(args):
         "mmproj": mmproj_path,
         "ngl": 999 if hw["accel"] in ("cuda", "rocm", "vulkan") and hw["vram_gb"] >= 2 else 0,
         "llama_args": entry.get("llama_args", []),
+        "claude_bin": claude_bin,
     }
     with open(os.path.join(h, "config.json"), "w") as f:
         json.dump(cfg, f, indent=2)
@@ -508,7 +631,7 @@ def cmd_run(args):
             proxy_proc.wait()
             return
 
-        claude = resolve_claude_bin()
+        claude = cfg.get("claude_bin") or resolve_claude_bin()
         if not claude:
             print("Claude Code CLI not found. Install it, then run with these set:")
             print("  ANTHROPIC_BASE_URL=http://localhost:4000")
@@ -519,6 +642,10 @@ def cmd_run(args):
         cenv = dict(os.environ)
         cenv["ANTHROPIC_BASE_URL"] = "http://localhost:4000"
         cenv["ANTHROPIC_API_KEY"] = "sk-local"
+        if is_android():
+            # musl finds no /etc/resolv.conf on Android; nothing should be
+            # dialing out anyway when the model is on the phone.
+            cenv["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
         print(f"Launching Claude Code ({cfg['model_name']} [{cfg['quant']}], 100% local)\n")
         subprocess.call([claude, "--model", "claude-sonnet-4-6"], env=cenv)
         proxy_proc.terminate()
@@ -527,7 +654,7 @@ def cmd_run(args):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Claude Code Local — portable (Linux/Windows)")
+    ap = argparse.ArgumentParser(description="Claude Code Local — portable (Linux/Windows/Android)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("detect")
     pi = sub.add_parser("install")
