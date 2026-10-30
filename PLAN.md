@@ -74,6 +74,8 @@ What this tells us:
 
 **Re-test after parser fix (c064370):** the Write call now parses and **add.py was written** (`print(2 + 3)`, prints 5 when run by hand), but the model never ran it. Try 1 (338 s, 4 turns): after Write it called tools named `Run` and `Execute`, which don't exist, then said it had no tool to run Python; the answer never said 5. Try 2: same Write, then `Run`/`Execute` and 30+ calls to lowercase `bash` (tool names are case sensitive), so I stopped it at about 20 min. Server start 12 to 17 s, prompt 12.9 tok/s (3062 tokens, 237 s first turn), generation 5.5 to 6.0 tok/s, free RAM low 1.04 GB. Next fix to try: match tool names case-insensitively and map `Run`/`Execute` to Bash in the proxy
 
+**Run 3 (tool-name aliases, f7f04a0): passed.** Try 1 hit the 15 min cap with no finished turn: the model ran on for about 1,700 tokens, the proxy's 600 s llama timeout fired and Claude Code's retry did the same. Try 2 (694 s, including about 4 min waiting for try 1's abandoned request to drain from llama-server): Write made add.py, the model called `Run`, the log shows `Tool name alias applied: Run -> Bash`, it ran and answered "The output is: `2 + 3 = 5`" in 3 turns. Server start 14.6 s, prompt 12.1 tok/s (3062 tokens, 253 s first turn), generation 4.1 to 5.3 tok/s, free RAM low 1.13 GB. Only the Run alias fired; no argument aliases. Left: cap max_tokens or add a stop for runaway turns, and cancel the llama request when the client disconnects
+
 ## Left for a real release
 
 1. Run it on a real 8 GB and a real 12 GB phone: speed, heat, battery, whether Android's low-memory killer leaves Termux alone
