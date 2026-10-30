@@ -89,8 +89,11 @@ LEASE_NAME = os.environ.get("AGENT_LEASE_NAME", "agent-local")
 LEASE_GB = float(os.environ.get("AGENT_LEASE_GB", "36" if BACKEND == "mlx" else "0"))
 # reasoning models (Liquid LFM2.5) spend thousands of tokens thinking before the call; at 4096 the
 # 10/26 video job hit the cap mid-thought, wrote nothing, and then claimed work it never did
-MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS",
-                                "16384" if "lfm" in os.environ.get("AGENT_MODEL", "").lower() else "4096"))
+MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "16384"))   # 10/30: 16k for every model (4096 cut reasoning)
+# 10/30 ladder: how many skipped repeat calls end a turn (was a hard 3, which ended a looping turn in ~10 calls)
+BLOCK_LIMIT = int(os.environ.get("AGENT_BLOCK_LIMIT", "3"))
+# 10/30 swap mode: a request may wait at the swap tap while a render holds the memory; give reads that long
+HTTP_TIMEOUT = int(os.environ.get("AGENT_HTTP_TIMEOUT", "75"))
 TEMP = float(os.environ.get("AGENT_TEMP", "0.3"))
 # 40 was too few: on 2026-10-18 HQ Free (Body Play deploy) and Grok (HQ Free on the mini/PC)
 # both ran 40 tool rounds of real work and stopped mid-task with nothing on screen. The loop
@@ -358,6 +361,18 @@ def tool_bash(command):
 
 def tool_read(path, offset=None, limit=None):
     p = Path(path).expanduser()
+    if p.is_dir():
+        items = sorted(p.iterdir())
+        return _clip(f"{p} is a folder, not a file. Its contents (Read one of these files):\n"
+                     + "\n".join(str(i) + ("/" if i.is_dir() else "") for i in items[:200]))
+    if not p.exists():
+        import difflib
+        par = p.parent
+        while not par.exists() and par != par.parent:
+            par = par.parent
+        near = difflib.get_close_matches(p.name, [i.name for i in par.iterdir()], n=5, cutoff=0.3) if par.exists() else []
+        return (f"ERROR: no file at {p}. " + (f"Closest names in {par}: {', '.join(near)}. " if near else
+                f"The nearest folder that exists is {par}. ") + "Use Glob or ls to find the real path.")
     lines = p.read_text(errors="replace").splitlines()
     start = (offset - 1) if offset else 0
     end = start + limit if limit else len(lines)
@@ -392,12 +407,22 @@ def tool_edit(path, old_string, new_string, replace_all=False):
 
 
 def tool_glob(pattern, path=None):
+    # 10/30: folders count too (shown with a trailing /), and a bare name with no wildcard also
+    # searches below the folder, so "promo" finds formats/promo/ instead of [no matches]
     root = Path(path).expanduser() if path else Path.cwd()
-    hits = [f for f in root.glob(pattern) if f.is_file()]
+    if not root.exists():
+        return f"[no such folder: {root}]"
+    if Path(pattern).expanduser().is_absolute():
+        pp = Path(pattern).expanduser()
+        root, pattern = Path(pp.anchor), str(pp.relative_to(pp.anchor))
+    hits = list(root.glob(pattern))
+    if not hits and not any(ch in pattern for ch in "*?["):
+        hits = list(root.glob(f"**/*{pattern}*"))[:300]
+    hits = [f for f in hits if f.exists()]
     hits.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     if not hits:
-        return "[no matches]"
-    return _clip("\n".join(str(f) for f in hits[:300]))
+        return f"[no matches for {pattern} under {root}]"
+    return _clip("\n".join(str(f) + ("/" if f.is_dir() else "") for f in hits[:300]))
 
 
 def tool_grep(pattern, path=None, glob=None):
@@ -443,12 +468,21 @@ def run_tool(name, args):
         fn = DISPATCH.get(name)
     if not fn:
         return f"ERROR: no tool named {name}. Available: {', '.join(DISPATCH)}"
+    if isinstance(args, dict):   # 10/30: common argument-name drift, mapped instead of failing
+        args = dict(args)
+        for alias, real in (("file_path", "path"), ("filepath", "path"), ("file", "path"), ("filename", "path"),
+                            ("cmd", "command"), ("script", "command"), ("text", "content"), ("old", "old_string"),
+                            ("new", "new_string"), ("directory", "path"), ("dir", "path")):
+            if alias in args and real not in args:
+                args[real] = args.pop(alias)
     try:
         return fn(**args)
     except subprocess.TimeoutExpired:
-        return f"ERROR: {name} timed out after {BASH_TIMEOUT}s."
+        return (f"ERROR: {name} timed out after {BASH_TIMEOUT}s and was stopped. For a long job run it in the "
+                "background: nohup <command> > <log> 2>&1 & then check it with: sleep 90 && tail -40 <log>")
     except TypeError as e:
-        return f"ERROR: bad arguments for {name}: {e}"
+        want = ", ".join(TOOLS_BY_NAME.get(name, {}).get("parameters", {}).get("properties", {}).keys())
+        return f"ERROR: bad arguments for {name}: {e}. {name} takes: {want}"
     except FileNotFoundError as e:
         return f"ERROR: {e}"
     except Exception as e:
@@ -1317,7 +1351,7 @@ class HTTPEngine:
         # dribbles keepalive whitespace ends the turn after 75s idle instead of
         # freezing the UI for 10 minutes (2026-08-20: agent sat in readline forever
         # after the gateway had already logged 200). One-shot gets a longer wall.
-        return urllib.request.urlopen(req, timeout=75 if stream else 240)
+        return urllib.request.urlopen(req, timeout=HTTP_TIMEOUT if stream else max(240, HTTP_TIMEOUT))
 
     def _step_stream(self, on_text):
         blocks = []
@@ -1569,6 +1603,7 @@ def _agent_turn(engine, user_text, quiet=False, images=()):
     # 10/15 and never answered. The same call with the same arguments a third
     # time is not run; the model is told to stop and answer instead.
     seen_calls = {}
+    last_result = {}
     blocked = 0
     turn_seen = []     # every tool result this turn, for the draft check
     checked = False
@@ -1642,14 +1677,22 @@ def _agent_turn(engine, user_text, quiet=False, images=()):
         for call_id, name, args in calls:
             sig = name + json.dumps(args, sort_keys=True)
             seen_calls[sig] = seen_calls.get(sig, 0) + 1
+            # a re-check of a running job (sleep && tail, status) is legitimately repeated: never skip it
+            _cmd = str(args.get("command", "")) if isinstance(args, dict) else ""
+            if seen_calls[sig] > 2 and BLOCK_LIMIT > 3 and ("sleep" in _cmd or "tail" in _cmd or "status" in _cmd):
+                seen_calls[sig] = 2
             if seen_calls[sig] > 2:
                 blocked += 1
                 if SHOW_TOOLS:
                     print(c(f"  ⟲ {name} again, skipped (already ran it twice)", YELLOW))
+                prev = last_result.get(sig, "")
                 results.append((call_id, name,
-                    "NOT RUN: you already made this exact call twice and got the same result. "
-                    "Do not repeat it. Use what you already have to answer Matt now, or try "
-                    "a genuinely different approach."))
+                    ("NOT RUN: you already made this exact call twice and got the same result. "
+                     "Do not repeat it. Take a different next step toward finishing the task. "
+                     f"The result you already have was:\n{prev[:1500]}") if BLOCK_LIMIT > 3 else
+                    ("NOT RUN: you already made this exact call twice and got the same result. "
+                     "Do not repeat it. Use what you already have to answer Matt now, or try "
+                     "a genuinely different approach.")))
                 continue
             if SHOW_TOOLS:
                 print(c(f"  ⚒ {name}", CYAN) + c(f"  {preview(name, args)}", DIM))
@@ -1669,10 +1712,15 @@ def _agent_turn(engine, user_text, quiet=False, images=()):
                     + c(f"  ({took:.1f}s, {len(result)} chars)", DIM)
                 )
             results.append((call_id, name, result))
+            last_result[sig] = result
             turn_seen.append(result)
+            # 10/30: re-running a build after editing a file is not a repeat (Liquid's make-promo --from footage
+            # was skipped after it fixed promo.json): a successful Write/Edit resets the repeat counts
+            if name in ("Write", "Edit") and not result.startswith("ERROR"):
+                seen_calls.clear()
         engine.add_tool_results(results)
         final = prose
-        if blocked >= 3:
+        if blocked >= BLOCK_LIMIT:
             # it keeps trying anyway: one last turn with no tools to say what it found
             engine.add_user("Stop using tools. In two or three plain sentences, tell Matt what "
                             "you found and what is still unknown.")
