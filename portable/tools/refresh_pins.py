@@ -82,6 +82,12 @@ MODELS = [
          quants={"BF16": ["Qwen3.5-2B-BF16.gguf"], "Q8_0": ["Qwen3.5-2B-Q8_0.gguf"],
                  "Q6_K": ["Qwen3.5-2B-Q6_K.gguf"], "Q4_K_M": ["Qwen3.5-2B-Q4_K_M.gguf"]},
          mmproj="mmproj-F16.gguf", args=["--image-min-tokens", "1024"]),
+    # 4 GB phones: same family, vision tower and <tool_call> template, 0.8 GB at Q8.
+    dict(id="qwen3.5-0.8b", name="Qwen 3.5 0.8B", base="Qwen/Qwen3.5-0.8B", repo="unsloth/Qwen3.5-0.8B-GGUF",
+         params_b=0.8, active_b=0.8,
+         quants={"BF16": ["Qwen3.5-0.8B-BF16.gguf"], "Q8_0": ["Qwen3.5-0.8B-Q8_0.gguf"],
+                 "Q6_K": ["Qwen3.5-0.8B-Q6_K.gguf"], "Q4_K_M": ["Qwen3.5-0.8B-Q4_K_M.gguf"]},
+         mmproj="mmproj-F16.gguf", args=["--image-min-tokens", "1024"]),
 ]
 
 
