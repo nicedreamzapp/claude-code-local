@@ -72,6 +72,8 @@ What this tells us:
 3. With no override the picker chooses 0.8B at **BF16** on this phone (2.68 of 2.78 GB budget), but only 1.7 GB is free and BF16 has no fast CPU path here. On Android the budget should come from MemAvailable, not MemTotal
 4. 4 GB phones work as a server-start test, not as a coding agent; the 6 GB floor stands
 
+**Re-test after parser fix (c064370):** the Write call now parses and **add.py was written** (`print(2 + 3)`, prints 5 when run by hand), but the model never ran it. Try 1 (338 s, 4 turns): after Write it called tools named `Run` and `Execute`, which don't exist, then said it had no tool to run Python; the answer never said 5. Try 2: same Write, then `Run`/`Execute` and 30+ calls to lowercase `bash` (tool names are case sensitive), so I stopped it at about 20 min. Server start 12 to 17 s, prompt 12.9 tok/s (3062 tokens, 237 s first turn), generation 5.5 to 6.0 tok/s, free RAM low 1.04 GB. Next fix to try: match tool names case-insensitively and map `Run`/`Execute` to Bash in the proxy
+
 ## Left for a real release
 
 1. Run it on a real 8 GB and a real 12 GB phone: speed, heat, battery, whether Android's low-memory killer leaves Termux alone
