@@ -51,6 +51,27 @@ Where the emulator stopped: an 8 GB guest kept getting SIGTERMed by the mini's
 Forge Memory Guard, because Song Forge reserves 60 of the mini's 64 GB. The full
 run was done with a 5 GB guest, so it ran Q8. The BF16 tier was only benchmarked.
 
+## Real phone: Cricket U680AC (4 GB)
+
+Android 13, 8 ARMv8.0 cores (2.2 + 1.6 GHz, no dotprod/i8mm), 3.7 GB RAM with about
+1.7 GB actually free. Below the 6 GB tier, so this run used the new catalog entry
+**Qwen 3.5 0.8B** (`Qwen/Qwen3.5-0.8B`: `vision_config.model_type=qwen3_5`, `<tool_call>` template)
+at **Q8_0** (`CCL_MODEL_ID=qwen3.5-0.8b CCL_BUDGET_GB=2.4`), ctx 16384.
+
+- **Termux:** official v0.118.3 GitHub arm64 APK, sha256 matched the release's `sha256sums`. `adb install` was refused (`INSTALL_FAILED_VERIFICATION_FAILURE`) until adb-install verification was switched off for the install, then restored. The GitHub build is debuggable, so `adb shell run-as com.termux` drives it with no screen taps
+- **Install:** the one-liner finished in **213 s** on Wi-Fi (pkg upgrade, clone, llama.cpp b11669, 0.76 GB model, mmproj, Claude Code 2.1.312 + musl loader)
+- **Server start:** llama-server + proxy healthy in **14 s**
+- **llama-bench (8 threads):** prompt **15.2 tok/s** (pp512), generation **7.5 tok/s** (tg64)
+- **Inside Claude Code:** first turn 3084 prompt tokens at **11.4 tok/s** (270 s), generation **2.5 to 2.9 tok/s**. The second try reused the prompt cache (4 new tokens), so it took 57 s instead of 316 s
+- **RAM:** free memory went from 1.73 GB to a low of **1.09 GB** during the run. No OOM, Termux was not killed
+- **End to end: failed at the tool call, twice.** Both tries the model answered "I'll create add.py..." and emitted `<function=Write><file_path>...</file_path><content>...` instead of `<parameter=file_path>`. The proxy logged `function-in-tag but no params` and returned plain text, so Claude Code ended after 1 turn; add.py was never written or run
+
+What this tells us:
+1. The whole stack installs and runs on a real 4 GB phone; the weak link is the 0.8B model's tool format, not the phone
+2. The proxy could accept `<function=X><arg>value</arg>` as a fallback (the intent is clear in the output); worth trying before ruling 0.8B out
+3. With no override the picker chooses 0.8B at **BF16** on this phone (2.68 of 2.78 GB budget), but only 1.7 GB is free and BF16 has no fast CPU path here. On Android the budget should come from MemAvailable, not MemTotal
+4. 4 GB phones work as a server-start test, not as a coding agent; the 6 GB floor stands
+
 ## Left for a real release
 
 1. Run it on a real 8 GB and a real 12 GB phone: speed, heat, battery, whether Android's low-memory killer leaves Termux alone
