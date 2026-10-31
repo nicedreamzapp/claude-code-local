@@ -25,6 +25,9 @@
 
 **In one sentence:** a small Python server ([`proxy/server.py`](proxy/server.py)) runs open AI models on your Mac's chip with Apple's MLX and answers Claude Code in Anthropic's own API format, so Claude Code works with no cloud model and no API key.
 
+Ran out of Claude usage or hit a rate limit mid-task? [Start here](#-hit-your-claude-code-usage-limit),
+it takes one command to keep working on a local model.
+
 Other things I built that go with it are in [the local-first family](#-the-local-first-family).
 
 <p align="center">
@@ -52,16 +55,29 @@ Matt Macosko wrote the glue that makes local models usable inside Claude Code. T
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s02-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s02-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s02-banner.svg" width="100%" alt="02. Hit your usage limit?. Keep working on your own Mac"></picture>
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s02-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s02-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s02-r1.svg" width="100%" alt="One command. Run the install script and keep working in the same project. Works on 16 GB. It even works on a 16 GB MacBook. keep going. Type exit, then keep going. The same conversation carries on."></picture>
 
-### 🛑 Hit your Claude usage limit?
+### 🛑 Hit your Claude Code usage limit?
 
-Claude Code just said **"you've reached your usage limit"** and the reset is hours away? Keep working:
-same Claude Code, same project, but the AI answering runs on your own Mac.
+Claude Code just said **"5-hour limit reached"**, **"You've reached your weekly limit"**, or your API
+key came back with **"credit balance is too low"**, and the reset is hours away? You ran out of Claude
+usage, not out of work. Keep going on your own machine: same Claude Code, same project, but the AI
+answering runs on your Mac (or your Linux or Windows PC), with no API key and no usage limit.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash
-```
+1. **Install it once** (Mac or Linux; Windows is [below](#-on-linux-or-a-windows-pc)):
 
-That's it. It even works on a **16 GB MacBook**, and gets better the more memory your Mac has.
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash
+   ```
+
+2. **Switch to local.** On a Mac, type `exit` in Claude Code, then `keep going`, and the same
+   conversation carries on with a local model. Or double-click **Claude Local** on your Desktop for a
+   fresh session (`claude-local` on Linux).
+3. **Switch back when your limit resets.** Plain `claude` is never changed by the install, so it
+   still uses your Claude plan.
+
+It even works on a **16 GB MacBook**, and gets better the more memory your Mac has. A local model is
+not Claude Opus, so keep requests to one clear step at a time on smaller machines. More answers in
+the [usage limit FAQ](#-usage-limit-faq) and the
+[usage limit guide](https://nicedreamzapp.github.io/claude-code-local/usage-limit/).
 
 Once it's running, [the local-first family](#-the-local-first-family) takes it off the keyboard: your browser, your voice, your phone, all on the same machine.
 
@@ -74,7 +90,7 @@ and **the same conversation carries on** with whichever model you pick:
 - 💻 **Models on your Mac** from the lineup below, sized to fit your memory
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/nicedreamzapp/trinidad-head/main/docs/images/keep-going.jpg" width="860" alt="The keep going menu: free cloud and local models to continue a Claude conversation">
+  <img src="https://raw.githubusercontent.com/nicedreamzapp/trinidad-head/b4429e7e8773f73446552a9e589f7589b177d9c2/docs/images/keep-going.jpg" width="860" alt="The keep going menu: free cloud and local models to continue a Claude conversation">
 </p>
 
 `setup.sh` installs it for you. To add it by hand, or to turn on the free cloud models:
@@ -433,6 +449,39 @@ CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-banner.svg" width="100%" alt="07. Details, other options and thanks. Docs, alternatives, contributors"></picture>
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-r1.svg" width="100%" alt="Full guide. Every model table, benchmark, tuning setting and design note. Other ways. Ollama, claude-code-router and claude-code-proxy. Contributors. Eight people fixed things; they are named below."></picture>
+
+### ❓ Usage limit FAQ
+
+**Claude Code says "5-hour limit reached". What can I do?**
+Wait for the reset time it shows, pay for extra usage, or keep working on a local model with this
+repo. On a Mac, type `exit`, then `keep going`, and your conversation carries on locally.
+
+**When does the Claude Code usage limit reset?**
+The message tells you the time. Run `/usage` inside Claude Code to see each limit and when it resets.
+Plans have a 5-hour session limit and a separate weekly limit, so hitting the weekly one can mean days.
+
+**I ran out of Claude credits or my API says "credit balance is too low". Do I need to top up?**
+Not to keep coding. The local server needs no Anthropic API key and no subscription. The launchers
+send `sk-local` as the key and the server never checks it.
+
+**Can Claude Code use a local model?**
+Yes. Claude Code reads `ANTHROPIC_BASE_URL`, and this repo's server answers there in Anthropic's own
+Messages API format, so tools, file edits and commands work the same way.
+
+**Can it switch to the local model by itself when I hit the limit?**
+On a Mac, yes. Add one hook and a new window opens in the same folder and carries on. Setup and limits
+are in [Automatic keep going](docs/AUTO-HANDOFF.md). For background `claude -p` scripts,
+[claude-failover](https://github.com/nicedreamzapp/claude-failover) is a one-command switch.
+
+**Claude is down. Does this still work?**
+The model runs on your machine, so an Anthropic outage doesn't stop it. Claude Code itself still
+makes some background calls to Anthropic at startup unless you switch them off; the
+[Quickstart](docs/quickstart.md#4-check-that-nothing-leaves-the-mac) shows the four environment
+variables that do it.
+
+**Is a local model as good as Claude?**
+No, and I won't pretend it is. Big models on a 64 GB or 96 GB Mac handle real multi-step work. Small
+ones on 8 or 16 GB do best with one clear step at a time. It keeps you moving until your limit resets.
 
 ### 📚 Want the details?
 
