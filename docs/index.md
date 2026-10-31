@@ -18,6 +18,8 @@ Claude Code Local is a small Python server, [`proxy/server.py`](https://github.c
 
 [Install it](install.md){ .md-button .md-button--primary } [Quickstart](quickstart.md){ .md-button }
 
+Hit your Claude Code usage limit or ran out of credits? [Keep working on a local model](usage-limit.md).
+
 ## Who it is for
 
 - You use **Claude Code** and want to keep working when you hit your usage limit, without a second subscription.

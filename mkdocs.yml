@@ -124,6 +124,7 @@ nav:
   - Home: index.md
   - Install: install.md
   - Quickstart: quickstart.md
+  - Hit your usage limit?: usage-limit.md
   - Small Macs (8 / 16 GB): SMALL-MACS.md
   - Configuration: configuration.md
   - Automatic keep going: AUTO-HANDOFF.md
