@@ -316,6 +316,12 @@ def strip_think_tags(text):
         cleaned = cleaned.rsplit('</think>', 1)[1].strip()
     # Gemma 4 thinking: <|channel>thought\n...<channel|>
     cleaned = re.sub(r'<\|channel>thought\n.*?<channel\|>', '', cleaned, flags=re.DOTALL).strip()
+    # A lone <channel|>, the Gemma 4 version of the lone </think> above: the
+    # thought channel was opened (and closed empty) in the prompt to suppress
+    # thinking, and Gemma 4 E4B reasons anyway, then closes the channel again.
+    # Everything before the close is reasoning, not the answer.
+    if '<channel|>' in cleaned:
+        cleaned = cleaned.rsplit('<channel|>', 1)[1].strip()
     # Empty tool_call blocks
     cleaned = re.sub(r'<tool_call>\s*</tool_call>', '', cleaned).strip()
     return cleaned if cleaned else text
@@ -1153,7 +1159,114 @@ def collect_images(messages):
     return out
 
 
-def convert_messages(body, vision=False):
+# Private keys convert_messages() leaves on its messages. template_messages()
+# removes them (or turns them into structured tool_calls) before any chat
+# template sees the list.
+STRUCT_TEXT = "_ccl_text"
+STRUCT_CALLS = "_ccl_tool_calls"
+STRUCT_ID = "_ccl_tool_call_id"
+STRUCT_NAME = "_ccl_tool_name"
+STRUCT_TURN_TEXT = "_ccl_tool_turn_text"
+_STRUCT_KEYS = (STRUCT_TEXT, STRUCT_CALLS, STRUCT_ID, STRUCT_NAME, STRUCT_TURN_TEXT)
+_PROBE_MARK = "CCL_TOOL_RESULT_PROBE_7f3a"
+_structured_cache = {}
+
+
+def _plain(m):
+    return {k: v for k, v in m.items() if k not in _STRUCT_KEYS}
+
+
+def _structured(messages):
+    """Assistant tool calls as OpenAI-style tool_calls, tool results as
+    role=tool messages carrying tool_call_id + name, placed right after the
+    assistant turn that made the calls (a tool_result turn's own text goes after
+    its results). A tool message with no assistant tool_calls before it (its
+    call was compacted away) becomes a user message so it is not dropped."""
+    out = []
+    i = 0
+    while i < len(messages):
+        m = messages[i]
+        if m.get(STRUCT_TURN_TEXT):
+            j = i + 1
+            while j < len(messages) and messages[j].get("role") == "tool":
+                j += 1
+            if j > i + 1:
+                for t in messages[i + 1:j]:
+                    out.append(t)
+                out.append(m)
+                i = j
+                continue
+        out.append(m)
+        i += 1
+
+    final = []
+    open_calls = False
+    for m in out:
+        role = m.get("role")
+        if role == "assistant" and m.get(STRUCT_CALLS):
+            final.append({"role": "assistant", "content": m.get(STRUCT_TEXT, ""),
+                          "tool_calls": m[STRUCT_CALLS]})
+            open_calls = True
+        elif role == "tool":
+            if open_calls:
+                t = {"role": "tool", "content": m.get("content", "")}
+                if m.get(STRUCT_ID):
+                    t["tool_call_id"] = m[STRUCT_ID]
+                if m.get(STRUCT_NAME):
+                    t["name"] = m[STRUCT_NAME]
+                final.append(t)
+            else:
+                final.append({"role": "user", "content": m.get("content", "")})
+        else:
+            final.append(_plain(m))
+            open_calls = False
+    return final
+
+
+def template_needs_structured_tool_calls(tok):
+    """True when this tokenizer's chat template drops a tool result that
+    follows a text-form tool call (our default) but renders it after a
+    structured tool_calls turn. Stock Gemma 4 templates do this: they skip
+    role=tool messages unless the assistant turn before them has tool_calls.
+    Decided once per template by rendering a probe conversation both ways."""
+    template = getattr(tok, "chat_template", None)
+    if not isinstance(template, str) or "tool_calls" not in template:
+        return False
+    key = hash(template)
+    if key in _structured_cache:
+        return _structured_cache[key]
+    probe = [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": "u"},
+        {"role": "assistant", "content": '<tool_call>\n{"name": "Read", "arguments": {"file_path": "a"}}\n</tool_call>',
+         STRUCT_TEXT: "", STRUCT_CALLS: [{"id": "call_0", "type": "function",
+                                          "function": {"name": "Read", "arguments": {"file_path": "a"}}}]},
+        {"role": "tool", "content": _PROBE_MARK, STRUCT_ID: "call_0", STRUCT_NAME: "Read"},
+    ]
+    result = False
+    try:
+        flat = tok.apply_chat_template([_plain(m) for m in probe], add_generation_prompt=True, tokenize=False)
+        if _PROBE_MARK not in flat:
+            structured = tok.apply_chat_template(_structured(probe), add_generation_prompt=True, tokenize=False)
+            result = _PROBE_MARK in structured
+    except Exception as e:  # a template that cannot render the probe keeps the default
+        log(f"  Tool-call template probe failed ({e}); keeping text-form tool calls")
+    _structured_cache[key] = result
+    if result:
+        log("  Chat template drops text-form tool results: sending structured tool_calls")
+    return result
+
+
+def template_messages(messages, tok=None):
+    """The message list a chat template should see. Text-form tool calls (the
+    long-standing default) unless the template would drop the results."""
+    tok = tok if tok is not None else tokenizer
+    if any(m.get(STRUCT_CALLS) for m in messages) and template_needs_structured_tool_calls(tok):
+        return _structured(messages)
+    return [_plain(m) for m in messages]
+
+
+def convert_messages(body, vision=False, tool_ids=False):
     """Convert Anthropic Messages format to MLX chat messages.
 
     Handles:
@@ -1165,6 +1278,7 @@ def convert_messages(body, vision=False):
       vision=False, an image becomes a short "[image omitted]" marker
     """
     messages = []
+    tool_names = {}  # tool_use id -> tool name, for the structured tool messages
     body_messages = body.get("messages", [])
 
     # System prompt
@@ -1209,13 +1323,26 @@ def convert_messages(body, vision=False):
                 content_str = ""
                 if text_parts:
                     content_str = "\n".join(p for p in text_parts if p)
+                text_only = content_str.strip()
                 for tu in tool_use_parts:
                     call_json = json.dumps({
                         "name": tu.get("name", ""),
                         "arguments": tu.get("input", {})
                     }, ensure_ascii=False)
                     content_str += f"\n<tool_call>\n{call_json}\n</tool_call>"
-                messages.append({"role": "assistant", "content": content_str.strip()})
+                    if tu.get("id"):
+                        tool_names[tu["id"]] = tu.get("name", "")
+                # The same calls in structured form, for chat templates that only
+                # render tool results after an assistant turn with tool_calls
+                # (stock Gemma 4). template_messages() picks one form or the other.
+                messages.append({"role": "assistant", "content": content_str.strip(),
+                                 STRUCT_TEXT: text_only,
+                                 STRUCT_CALLS: [{
+                                     "id": tu.get("id") or f"call_{i}",
+                                     "type": "function",
+                                     "function": {"name": tu.get("name", ""),
+                                                  "arguments": tu.get("input", {}) or {}},
+                                 } for i, tu in enumerate(tool_use_parts)]})
 
             # User message with tool_result blocks → split into tool messages
             elif tool_result_parts:
@@ -1223,7 +1350,7 @@ def convert_messages(body, vision=False):
                 if text_parts:
                     text = "\n".join(p for p in text_parts if p)
                     if text.strip():
-                        messages.append({"role": "user", "content": text})
+                        messages.append({"role": "user", "content": text, STRUCT_TURN_TEXT: True})
 
                 # Each tool_result becomes a "tool" role message
                 for tr in tool_result_parts:
@@ -1242,7 +1369,9 @@ def convert_messages(body, vision=False):
                         else:
                             result_content = "Error: " + result_content
                     # Include tool name context if we can find it
-                    messages.append({"role": "tool", "content": result_content})
+                    tid = tr.get("tool_use_id", "")
+                    messages.append({"role": "tool", "content": result_content,
+                                     STRUCT_ID: tid, STRUCT_NAME: tool_names.get(tid, "")})
 
             # Regular message: text, plus any images the user pasted
             else:
@@ -1256,7 +1385,9 @@ def convert_messages(body, vision=False):
                 if text.strip():
                     messages.append({"role": role, "content": text})
 
-    return messages
+    # tool_ids=True keeps the private keys template_messages() needs to build
+    # structured tool_calls; without it the output is the plain message list.
+    return messages if tool_ids else [_plain(m) for m in messages]
 
 
 def template_extras():
@@ -1272,6 +1403,7 @@ def render_prompt(messages, tools=None):
     """The chat template as text (vision path: mlx-vlm tokenizes it itself so it
     can expand each image placeholder into that image's patch tokens)."""
     extras = template_extras()
+    messages = template_messages(messages)
     try:
         return tokenizer.apply_chat_template(
             messages, tools=tools, add_generation_prompt=True, tokenize=False, **extras)
@@ -1295,6 +1427,7 @@ def tokenize_messages(messages, tools=None):
         # Text tokens only; each image counts as its placeholder here. Used for
         # logs, count_tokens and the MLX_MAX_CONTEXT check.
         return tokenizer.encode(render_prompt(messages, tools), add_special_tokens=False)
+    messages = template_messages(messages)
     kwargs = {
         "add_generation_prompt": True,
         "tokenize": True,
@@ -1823,7 +1956,7 @@ def count_prompt_tokens(body):
     """
     anthropic_tools = body.get("tools", [])
     llm_tools = convert_tools_for_llm(anthropic_tools) if anthropic_tools else None
-    return len(tokenize_messages(convert_messages(body, vision=VISION), tools=llm_tools))
+    return len(tokenize_messages(convert_messages(body, vision=VISION, tool_ids=True), tools=llm_tools))
 
 
 class PromptTooLong(Exception):
@@ -1897,7 +2030,7 @@ def generate_response(body, on_start=None, on_text=None):
     anthropic_tools = body.get("tools", [])
     llm_tools = convert_tools_for_llm(anthropic_tools) if anthropic_tools else None
 
-    messages = convert_messages(body, vision=VISION)
+    messages = convert_messages(body, vision=VISION, tool_ids=True)
     max_tokens = body.get("max_tokens", DEFAULT_MAX_TOKENS)
     temperature = body.get("temperature", 0.2)
     log(f"  Sampling: temperature {temperature}"
