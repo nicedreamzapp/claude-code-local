@@ -489,6 +489,7 @@ ones on 8 or 16 GB do best with one clear step at a time. It keeps you moving un
 |---|---|
 | 📖 **[Full technical guide](docs/FULL-GUIDE.md)** | Every model table, benchmark, tuning setting and design note |
 | 📊 [Benchmarks](docs/BENCHMARKS.md) · 🔧 [Tool-call reliability](docs/TOOL-CALL-RELIABILITY.md) | The numbers and how they were measured |
+| ⚖️ [Claude Code Local vs Ollama](docs/vs-ollama.md) | The same 10 coding tasks on both, 30 runs each: same pass rate, 2.8x faster on Qwen 3.5 2B |
 | 🎤 [Voice mode](docs/VOICE-MODE.md) · 🌐 [Browser agent](docs/BROWSER-AGENT.md) · 📱 [Phone control](docs/PHONE-CONTROL.md) · 🔌 [MCP servers](docs/MCP-SERVERS.md) | Everything the launchers can do |
 | 🔋 [Automatic keep going](docs/AUTO-HANDOFF.md) | Hand a conversation to a free or local model by itself when you hit a usage limit |
 | 📁 [What's in this repo](docs/REPO-LAYOUT.md) · 🙏 [Credits](docs/CREDITS.md) | The tour and the thank-yous |
