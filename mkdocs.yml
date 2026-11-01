@@ -126,6 +126,7 @@ nav:
   - Quickstart: quickstart.md
   - Hit your usage limit?: usage-limit.md
   - Small Macs (8 / 16 GB): SMALL-MACS.md
+  - Benchmark vs Ollama: vs-ollama.md
   - Configuration: configuration.md
   - Automatic keep going: AUTO-HANDOFF.md
   - How it works: how-it-works.md

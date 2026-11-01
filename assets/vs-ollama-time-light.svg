@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="302" viewBox="0 0 560 302" role="img" aria-labelledby="t d" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+<title id="t">Median time per task: Claude Code Local vs Ollama</title>
+<desc id="d">Qwen 3.5 2B, 8-bit, Claude Code Local: 9.1 seconds, 28 of 30 passed; Qwen 3.5 2B, 8-bit, Ollama: 23.2 seconds, 25 of 30 passed; Qwen 3.5 4B, bf16, Claude Code Local: 20.0 seconds, 30 of 30 passed; Qwen 3.5 4B, bf16, Ollama: 28.6 seconds, 30 of 30 passed</desc>
+<text x="0" y="22" font-size="18" font-weight="600" fill="#0b0b0b">Median time per task, lower is faster</text>
+<text x="0" y="44" font-size="13.5" fill="#52514e">10 coding tasks, 3 runs each, Mac mini M4 Pro. Label: tasks passed.</text>
+<rect x="0" y="60" width="13" height="13" rx="2" fill="#2a78d6"/>
+<text x="19" y="71.5" font-size="14" fill="#0b0b0b">Claude Code Local</text>
+<rect x="179" y="60" width="13" height="13" rx="2" fill="#eb6834"/>
+<text x="198" y="71.5" font-size="14" fill="#0b0b0b">Ollama</text>
+<line x1="2.0" y1="86" x2="2.0" y2="276" stroke="#8a8984" stroke-width="1"/>
+<text x="2.0" y="294" font-size="13" text-anchor="start" fill="#52514e">0 s</text>
+<line x1="138.0" y1="86" x2="138.0" y2="276" stroke="#e4e3df" stroke-width="1"/>
+<text x="138.0" y="294" font-size="13" text-anchor="middle" fill="#52514e">10 s</text>
+<line x1="274.0" y1="86" x2="274.0" y2="276" stroke="#e4e3df" stroke-width="1"/>
+<text x="274.0" y="294" font-size="13" text-anchor="middle" fill="#52514e">20 s</text>
+<line x1="410.0" y1="86" x2="410.0" y2="276" stroke="#e4e3df" stroke-width="1"/>
+<text x="410.0" y="294" font-size="13" text-anchor="middle" fill="#52514e">30 s</text>
+<text x="2" y="104" font-size="15" font-weight="600" fill="#0b0b0b">Qwen 3.5 2B, 8-bit</text>
+<path d="M2.0,114 H121.1 Q125.1,114 125.1,118 V136 Q125.1,140 121.1,140 H2.0 Z" fill="#2a78d6"><title>Claude Code Local: 9.1 s median, 28/30 passed</title></path>
+<text x="133.1" y="132" font-size="14" fill="#0b0b0b" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke"><tspan font-weight="600">9.1 s</tspan><tspan fill="#52514e" dx="8">28/30 passed</tspan></text>
+<path d="M2.0,142 H314.2 Q318.2,142 318.2,146 V164 Q318.2,168 314.2,168 H2.0 Z" fill="#eb6834"><title>Ollama: 23.2 s median, 25/30 passed</title></path>
+<text x="326.2" y="160" font-size="14" fill="#0b0b0b" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke"><tspan font-weight="600">23.2 s</tspan><tspan fill="#52514e" dx="8">25/30 passed</tspan></text>
+<text x="2" y="204" font-size="15" font-weight="600" fill="#0b0b0b">Qwen 3.5 4B, bf16</text>
+<path d="M2.0,214 H270.0 Q274.0,214 274.0,218 V236 Q274.0,240 270.0,240 H2.0 Z" fill="#2a78d6"><title>Claude Code Local: 20.0 s median, 30/30 passed</title></path>
+<text x="282.0" y="232" font-size="14" fill="#0b0b0b" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke"><tspan font-weight="600">20.0 s</tspan><tspan fill="#52514e" dx="8">30/30 passed</tspan></text>
+<path d="M2.0,242 H387.6 Q391.6,242 391.6,246 V264 Q391.6,268 387.6,268 H2.0 Z" fill="#eb6834"><title>Ollama: 28.6 s median, 30/30 passed</title></path>
+<text x="399.6" y="260" font-size="14" fill="#0b0b0b" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke"><tspan font-weight="600">28.6 s</tspan><tspan fill="#52514e" dx="8">30/30 passed</tspan></text>
+</svg>
