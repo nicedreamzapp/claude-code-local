@@ -149,10 +149,61 @@ def test_portable_run_and_keepgoing_use_the_same_helpers(tmp_path, monkeypatch):
     assert '"claude-sonnet-4-6"' not in src
 
 
+def _health(max_context):
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"status": "ok", "max_context": max_context}).encode()
+            self.send_response(200)
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_local_window_comes_from_the_server_ceiling():
+    srv = _health(16384)
+    try:
+        assert keepgoing.local_context_window(srv.server_address[1]) == 16384
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_local_window_from_the_llama_config_or_the_default(tmp_path, monkeypatch):
+    srv = _health(0)  # MLX server with no ceiling
+    port = srv.server_address[1]
+    try:
+        monkeypatch.setattr(keepgoing, "IS_MAC", True)
+        assert keepgoing.local_context_window(port) == keepgoing.DEFAULT_LOCAL_WINDOW == 200_000
+        monkeypatch.setattr(keepgoing, "IS_MAC", False)
+        monkeypatch.setenv("CCL_HOME", str(tmp_path))
+        (tmp_path / "config.json").write_text('{"ctx": 32768}')
+        assert keepgoing.local_context_window(port) == 32768
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_portable_env_states_the_window(tmp_path, monkeypatch):
+    ccl = load_module("ccl_portable_window", ROOT / "portable" / "ccl.py")
+    kg = sys.modules["keepgoing"]
+    monkeypatch.setattr(kg, "local_context_window", lambda port=None: 65536)
+    monkeypatch.delenv("CLAUDE_CODE_MAX_CONTEXT_TOKENS", raising=False)
+    assert ccl.local_claude_env("m [Q4]")["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "65536"
+    monkeypatch.setenv("CLAUDE_CODE_MAX_CONTEXT_TOKENS", "1000")  # yours wins
+    assert ccl.local_claude_env("m [Q4]")["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "1000"
+
+
 # ─── bin/keepgoing (the Mac path) end to end ─────────────────────────────────
 
 FAKE_CLAUDE = """#!/bin/sh
-{ printf '%s\\n' "$@"; echo "MODEL=$ANTHROPIC_MODEL"; echo "KEY=$ANTHROPIC_API_KEY"; } > "$KG_LOG"
+{ printf '%s\\n' "$@"; echo "MODEL=$ANTHROPIC_MODEL"; echo "KEY=$ANTHROPIC_API_KEY";
+  echo "WINDOW=$CLAUDE_CODE_MAX_CONTEXT_TOKENS"; } > "$KG_LOG"
 """
 
 
@@ -165,7 +216,8 @@ def test_mac_keepgoing_names_the_model_and_preapproves_the_key(tmp_path):
 
     class H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
-            body = json.dumps({"status": "ok", "model": "mlx-community/Qwen3.5-4B-bf16"}).encode()
+            body = json.dumps({"status": "ok", "model": "mlx-community/Qwen3.5-4B-bf16",
+                               "max_context": 16384}).encode()
             self.send_response(200)
             self.send_header("content-length", str(len(body)))
             self.end_headers()
@@ -201,6 +253,7 @@ def test_mac_keepgoing_names_the_model_and_preapproves_the_key(tmp_path):
     out = log.read_text().splitlines()
     assert out[:4] == ["--model", "local:Qwen3.5-4B-bf16", "--resume", "mac-session"]
     assert "MODEL=local:Qwen3.5-4B-bf16" in out and "KEY=sk-local" in out
+    assert "WINDOW=16384" in out  # the server's own ceiling, so no "isn't recognized" warning
     cfg = json.loads((home / ".claude.json").read_text())
     assert cfg == {"keep": "me", "customApiKeyResponses": {"approved": ["sk-local"], "rejected": []}}
     assert "claude-sonnet-4-6" not in (ROOT / "bin" / "keepgoing").read_text()

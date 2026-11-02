@@ -66,6 +66,34 @@ def local_model_alias(model):
     return f"local:{name}" if name else "local"
 
 
+# What Claude Code assumes for a model it doesn't recognize. Used when the local server reports no
+# ceiling of its own, so the window it plans for is the same as before, just stated.
+DEFAULT_LOCAL_WINDOW = 200_000
+
+
+def local_context_window(port=None):
+    """The local model's context window, for CLAUDE_CODE_MAX_CONTEXT_TOKENS. Claude Code doesn't
+    know a "local:" model, so without it it shows a "Model isn't recognized" warning under the
+    header and guesses. The MLX server reports its ceiling (MLX_MAX_CONTEXT) as max_context on
+    /health; the llama.cpp install has its -c size in config.json; otherwise 200000."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port or PORT}/health", timeout=2) as r:
+            ctx = int(json.load(r).get("max_context") or 0)
+        if ctx > 0:
+            return ctx
+    except Exception:
+        pass
+    if not IS_MAC:
+        try:
+            with open(os.path.join(portable_home(), "config.json")) as f:
+                ctx = int(json.load(f).get("ctx") or 0)
+            if ctx > 0:
+                return ctx
+        except (OSError, ValueError, TypeError):
+            pass
+    return DEFAULT_LOCAL_WINDOW
+
+
 def claude_config_file():
     """Claude Code's own settings file: ~/.claude.json, or .claude.json inside CLAUDE_CONFIG_DIR."""
     base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~")
@@ -349,10 +377,14 @@ def main(argv=None):
 
 
 def cli(argv):
-    """Helpers for bin/keepgoing (bash): --local-alias MODEL prints the header name for a local run;
-    --approve-local-key pre-approves sk-local in ~/.claude.json. Anything else runs the picker."""
+    """Helpers for bin/keepgoing (bash): --local-alias MODEL prints the header name for a local run,
+    --local-window its context window, --approve-local-key pre-approves sk-local in ~/.claude.json.
+    Anything else runs the picker."""
     if argv[:1] == ["--local-alias"]:
         print(local_model_alias(argv[1] if len(argv) > 1 else ""))
+        return
+    if argv[:1] == ["--local-window"]:
+        print(local_context_window())
         return
     if argv[:1] == ["--approve-local-key"]:
         if approve_local_key() == "rejected":

@@ -558,6 +558,8 @@ def local_claude_env(model=None):
         for k in ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
                   "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL"):
             cenv[k] = alias
+        # Claude Code doesn't know that name: tell it the window, or it warns "isn't recognized".
+        cenv.setdefault("CLAUDE_CODE_MAX_CONTEXT_TOKENS", str(kg.local_context_window(PROXY_PORT)))
     if kg.approve_local_key() == "rejected":
         print(f"  Claude Code has the local key ({kg.LOCAL_KEY}) marked as rejected. "
               "Answer Yes when it asks about the custom API key.")

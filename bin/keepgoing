@@ -76,6 +76,8 @@ unset ANTHROPIC_AUTH_TOKEN
 ALIAS="$(python3 "$HERE/keepgoing.py" --local-alias "$MODEL")"
 export ANTHROPIC_MODEL="$ALIAS" ANTHROPIC_DEFAULT_HAIKU_MODEL="$ALIAS" \
        ANTHROPIC_DEFAULT_SONNET_MODEL="$ALIAS" ANTHROPIC_DEFAULT_OPUS_MODEL="$ALIAS"
+# Claude Code doesn't know that name, so tell it the window (else: "Model isn't recognized").
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-$(MLX_PORT="$PORT" python3 "$HERE/keepgoing.py" --local-window)}"
 # sk-local is a placeholder, not a real key. Record it as approved so the first run doesn't stop on
 # Claude Code's "Detected a custom API key" question (changes only that entry in ~/.claude.json).
 python3 "$HERE/keepgoing.py" --approve-local-key
