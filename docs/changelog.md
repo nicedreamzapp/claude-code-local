@@ -14,6 +14,8 @@ Built from the git history and the three tags in the repository. Pull request nu
 
 "Hit your limit? Keep going." Pulls v0.4.0 (parser fixes), v0.4.1 (limit-handoff security fix), v0.5.0 (Linux and Windows), v0.6.0 (the full kit) and v0.7.0 (small Macs) into one release. The version now lives in `VERSION` at the repo root and shows in the server banner, `/health`, the installers and the doctor report. Notes for each of those releases are on the [releases page](https://github.com/nicedreamzapp/claude-code-local/releases).
 
+- `keep going` on Linux and Windows: the installers set it up (`~/.bashrc` on Linux; `bin\keep.cmd` on PATH plus a PowerShell profile line on Windows) and it resumes the conversation on the installed llama.cpp model or a free cloud model (`portable/ccl.py keepgoing`). The doctor checks it on every OS, the uninstallers remove it. `CCL_PORT` / `CCL_LLAMA_PORT` move the portable ports.
+
 ## Earlier work on `main` after v0.3.0
 
 ### Server fixes (2026-10-09)

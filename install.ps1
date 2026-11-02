@@ -21,13 +21,17 @@
 # The menu only appears in an interactive console; otherwise the default is none.
 # Other settings: CCL_DIR (install folder), CCL_SKIP_MODEL=1 / -SkipModel (no llama.cpp or model
 # download), CCL_NO_DESKTOP=1 / -NoDesktop (no Desktop launcher), CCL_NONINTERACTIVE=1 (never prompt).
+# "keep going" (resume a Claude conversation on a free or local model when you hit your limit) is set
+# up by scripts\keepgoing-windows.ps1: CCL_NO_SHELL_HOOK=1 / -NoShellHook skips it, CCL_PROFILES and
+# CCL_NO_PATH=1 narrow what it edits.
 # Uninstall: uninstall.ps1 in the install folder (can remove the add-ons too).
 
 function Install-ClaudeCodeLocal {
   param(
     [string]$With = $env:CCL_WITH,
     [switch]$SkipModel = ($env:CCL_SKIP_MODEL -eq "1"),
-    [switch]$NoDesktop = ($env:CCL_NO_DESKTOP -eq "1")
+    [switch]$NoDesktop = ($env:CCL_NO_DESKTOP -eq "1"),
+    [switch]$NoShellHook = ($env:CCL_NO_SHELL_HOOK -eq "1")
   )
   $ErrorActionPreference = "Stop"
   $RepoUrl    = "https://github.com/nicedreamzapp/claude-code-local"
@@ -110,11 +114,19 @@ function Install-ClaudeCodeLocal {
     Copy-Item $launcher (Join-Path $desktop "Claude Local.cmd") -Force
   }
 
+  # "keep going": keepgoing.cmd / keep.cmd on PATH plus a PowerShell profile hook
+  if ($NoShellHook) {
+    Write-Host "Skipping the keep going shell hook (CCL_NO_SHELL_HOOK). Run it later:  $(Join-Path $InstallDir 'bin\keepgoing.cmd')"
+  } else {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallDir "scripts\keepgoing-windows.ps1") -RepoDir $InstallDir
+  }
+
   Write-Host ""
   Write-Host "=============================================="
   Write-Host "    Setup complete!"
   if (-not $NoDesktop) { Write-Host "    Double-click 'Claude Local' on your Desktop," }
   Write-Host "    or run:  $launcher"
+  Write-Host "    Hit your Claude limit? Type exit, then: keep going"
   Write-Host "=============================================="
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
     Write-Host ""

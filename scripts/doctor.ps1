@@ -2,8 +2,8 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\doctor.ps1 [-Fix] [-Report]
 #
-#   -Fix      safe repairs only: start your own scheduled task for a service that is down.
-#             Never deletes anything.
+#   -Fix      safe repairs only: start your own scheduled task for a service that is down, and
+#             set up keep going (scripts\keepgoing-windows.ps1) if it is missing. Never deletes anything.
 #   -Report   print a privacy-safe block to paste into a bug report (no usernames, home
 #             paths, hostnames, IPs, tokens or env values) instead of the full output
 #
@@ -11,7 +11,7 @@
 # Add-ons that were never installed show as "not installed" and are never errors.
 # Overrides (also used by the tests): MLX_PORT 4000, BROKER_PORT 9223, DOCK_PORT 8899,
 # FIAOS_PORT 9000, CCL_HOME, CCL_DIR, NARRATE_DIR, NARRATE_DATA, FIAOS_DIR, MOONSTONE_DIR,
-# TH_DIR, MOONSTONE_TASK, FIAOS_TASK.
+# TH_DIR, MOONSTONE_TASK, FIAOS_TASK, CCL_PROFILES, CCL_NO_PATH.
 
 param(
   [switch]$Fix,
@@ -193,6 +193,33 @@ function Test-Core {
   Test-Service "server" "model server" ([int](EnvOr "MLX_PORT" "4000")) "ClaudeCodeLocal" $false
 }
 
+# keep going: bin\keepgoing.cmd on PATH and the PowerShell profile line (scripts\keepgoing-windows.ps1
+# installs both). An older install has neither, so missing is a warning; -Fix runs that installer.
+function Test-KeepGoing {
+  $repo = Split-Path -Parent $PSScriptRoot
+  $bin = Join-Path $repo "bin"
+  if (-not (Test-Path (Join-Path $bin "keepgoing.cmd"))) {
+    Record "fail" "keepgoing" "bin\keepgoing.cmd missing from the install (re-run the installer)"; return
+  }
+  $docs = [Environment]::GetFolderPath("MyDocuments")
+  $profiles = if ($env:CCL_PROFILES) { @($env:CCL_PROFILES -split ';' | Where-Object { $_ }) }
+              else { @((Join-Path $docs "WindowsPowerShell\profile.ps1"), (Join-Path $docs "PowerShell\profile.ps1")) }
+  $hasProfile = { @($profiles | Where-Object { (Test-Path $_) -and ((Get-Content -Raw $_) -match 'keepgoing-profile\.ps1') }).Count -gt 0 }
+  $userPath = "$([Environment]::GetEnvironmentVariable('Path', 'User'));$env:Path"
+  $onPath = { @(($userPath -split ';') | Where-Object { $_ -and $_.TrimEnd('\') -ieq $bin.TrimEnd('\') }).Count -gt 0 }
+  $okProfile = & $hasProfile; $okPath = & $onPath
+  if ($Fix -and -not ($okProfile -and $okPath)) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo "scripts\keepgoing-windows.ps1") -RepoDir $repo | Out-Null
+    $userPath = "$([Environment]::GetEnvironmentVariable('Path', 'User'));$env:Path"
+    $okProfile = & $hasProfile; $okPath = & $onPath
+    if ($okProfile -and ($okPath -or $env:CCL_NO_PATH -eq "1")) { Record "pass" "keepgoing" "keep going was not set up; installed it (fixed)"; return }
+  }
+  if ($okProfile -and $okPath) { Record "pass" "keepgoing" "keep going on PATH and in your PowerShell profile" }
+  elseif ($okProfile) { Record "warn" "keepgoing" "keep going is in your PowerShell profile but bin is not on PATH, so cmd can't find it (run with -Fix)" }
+  elseif ($okPath) { Record "warn" "keepgoing" "keep going is on PATH but not in your PowerShell profile (run with -Fix)" }
+  else { Record "warn" "keepgoing" "keep going not installed (run with -Fix to add it)" }
+}
+
 function Test-AddOns {
   Say ""; Say "Add-ons"
   $h = Get-HomeDir
@@ -265,6 +292,7 @@ Say "  GPU:    $gpu"
 Say "  Memory: $ramGb GB"
 
 Test-Core
+Test-KeepGoing
 Test-AddOns
 
 $nPass = @($Results | Where-Object Status -eq "pass").Count

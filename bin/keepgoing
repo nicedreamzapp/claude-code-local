@@ -1,6 +1,7 @@
 #!/bin/bash
 # keepgoing — out of Claude credits? Type `exit` in Claude Code, then run this (or `keep going`)
-# in the same folder. Your conversation carries on with a free cloud model or a model on this Mac.
+# in the same folder. Your conversation carries on with a free cloud model or a model on this machine
+# (MLX on a Mac, llama.cpp on Linux).
 # `keepgoing --auto` skips the menu and picks for you (scripts/limit-handoff.py uses it).
 #
 # Settings (all optional), read from the environment or ~/.config/claude-code-local/keepgoing.env:
@@ -11,6 +12,12 @@
 #   MLX_PORT, MLX_PYTHON, MLX_SERVER   same as scripts/start-mlx-server.sh
 
 HERE="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+
+# Linux: the llama.cpp install (portable/setup-linux.sh) does the work. Same picker, same flags,
+# plus `-- <claude args>`. Windows runs bin/keepgoing.cmd, which lands in the same place.
+if [ "$(uname -s)" != "Darwin" ]; then
+  exec python3 -I "$HERE/../portable/ccl.py" keepgoing "$@"
+fi
 CONF="$HOME/.config/claude-code-local/keepgoing.env"
 [ -f "$CONF" ] && { set -a; . "$CONF"; set +a; }
 

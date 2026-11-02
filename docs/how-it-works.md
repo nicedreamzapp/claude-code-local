@@ -131,7 +131,7 @@ Tool calls use an XML dialect with raw-text values (`<function=Bash><parameter=c
 
 The launchers are thin bash wrappers. The shared library checks `/health`, restarts the server if a different model is loaded, prefers a local model folder over a download, finds the `claude` binary, and waits for the server. See [Configuration](configuration.md#launchers).
 
-`keep going` reads Claude Code's own session files in `~/.claude/projects/` to find the latest conversation for the current folder, then runs `claude --resume <session-id>` against either OpenRouter or the local server.
+`keep going` reads Claude Code's own session files in `~/.claude/projects/` to find the latest conversation for the current folder, then runs `claude --resume <session-id>` against either OpenRouter or the local server: MLX on a Mac, llama.cpp behind `portable/portable_server.py` on Linux and Windows (`portable/ccl.py keepgoing` starts it if it is not already running).
 
 ## Tests
 

@@ -327,8 +327,29 @@ check_core() {
   if [ "$OS" = Darwin ] && [ -d "$HOME/.local/mlx-native-server" ]; then
     link_check server-link "$HOME/.local/mlx-native-server/server.py" "$REPO_DIR/proxy/server.py"
   fi
-  if [ -L "$HOME/.local/bin/keepgoing" ]; then
-    link_check keepgoing-link "$HOME/.local/bin/keepgoing" "$REPO_DIR/bin/keepgoing"
+  check_keepgoing
+}
+
+# keep going: the command and the shell rc line. setup.sh (macOS) and portable/setup-linux.sh
+# (Linux) install both; an older install has neither, so missing is a warning, never a failure.
+check_keepgoing() {
+  local link="$HOME/.local/bin/keepgoing"
+  if [ -e "$link" ] || [ -L "$link" ] || [ "$MODE_FIX" = 1 ]; then
+    link_check keepgoing-link "$link" "$REPO_DIR/bin/keepgoing"
+  else
+    record warn keepgoing-link "keep going not installed: $(tilde "$link") missing (run with --fix to add it)"
+  fi
+  local rc found=""
+  for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    if [ -f "$rc" ] && grep -q "scripts/keepgoing-shell.sh" "$rc"; then found="$rc"; break; fi
+  done
+  if [ -n "$found" ]; then
+    record pass keepgoing-shell "keep going shell line in $(tilde "$found")"
+  else
+    record warn keepgoing-shell "no keep going line in ~/.zshrc or ~/.bashrc (re-run the installer to add it)"
+  fi
+  if [ "$OS" != Darwin ] && ! have python3; then
+    record fail keepgoing-python "keep going needs python3 on PATH"
   fi
 }
 

@@ -140,6 +140,8 @@ The server got something that is not a JSON object, for example from a hand-writ
 - `No Claude Code conversation found for this folder:` run it from the folder you were working in.
 - `(add a free OpenRouter key to see these — see README)` or `(couldn't reach OpenRouter: ...)`: the cloud list needs `OPENROUTER_API_KEY` and a network connection. Local models still work.
 - `The model didn't come up. Last lines of /tmp/mlx-server.log:` read those lines; usually memory or download problems as above.
+- Linux and Windows: `Not installed yet. Run:  python3 ccl.py install` means there is no llama.cpp model to fall back on; run the installer once. `llama-server did not come up on :8080` means another program owns that port; set `CCL_LLAMA_PORT` (and `CCL_PORT` for 4000).
+- Windows: `keep going` not found in a new window? Run `powershell -ExecutionPolicy Bypass -File scripts\doctor.ps1 -Fix`, which puts `bin\keep.cmd` on your PATH and the PowerShell profile line back. `bin\keepgoing.cmd` always works by its full path.
 
 ## Native Engine
 

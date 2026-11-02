@@ -186,19 +186,22 @@ Tool output fed back to the model is clipped to 30,000 characters. Grep needs `r
 
 ## Keep going
 
-`keep going` (or `keepgoing`) runs `bin/keepgoing`, which calls `bin/keepgoing.py` to find the newest Claude Code conversation for the current folder in `~/.claude/projects/*/*.jsonl` and show a menu.
+`keep going` (or `keepgoing`) runs `bin/keepgoing`, which calls `bin/keepgoing.py` to find the newest Claude Code conversation for the current folder in `~/.claude/projects/*/*.jsonl` (`$CLAUDE_CONFIG_DIR/projects` if you set it) and show a menu. On Linux `bin/keepgoing` hands off to `portable/ccl.py keepgoing`; on Windows `bin\keepgoing.cmd`, `bin\keep.cmd` and the PowerShell functions from `scripts\keepgoing-profile.ps1` run the same thing. Folder names are compared without case on Windows.
 
 | Setting | Meaning |
 |---|---|
 | `OPENROUTER_API_KEY` | Free key from openrouter.ai. Unlocks the free cloud list. |
 | `KEEPGOING_BEFORE_LOCAL` | Shell command run before a local model is started |
 | `KEEPGOING_AFTER_LOCAL` | Shell command run when the local session ends |
-| `MLX_PORT`, `MLX_PYTHON`, `MLX_SERVER` | Same meaning as for the server and launchers |
+| `MLX_PORT`, `MLX_PYTHON`, `MLX_SERVER` | Same meaning as for the server and launchers (Mac) |
+| `CCL_PORT`, `CCL_LLAMA_PORT`, `CCL_HOME` | Linux and Windows: the Anthropic proxy port (4000), the llama-server port (8080) and the install folder |
 
-Settings can also live in `~/.config/claude-code-local/keepgoing.env`, which is sourced first.
+Settings can also live in `~/.config/claude-code-local/keepgoing.env` (`%USERPROFILE%\.config\claude-code-local\keepgoing.env` on Windows), which is sourced first.
 
 - **Free cloud list:** up to three OpenRouter models whose ID ends in `:free`, that support tools and have at least 128,000 tokens of context, largest context first. Claude Code is pointed at `https://openrouter.ai/api` with `ANTHROPIC_AUTH_TOKEN` set to your key.
 - **Local list:** the model already running on the port (if any), then the five `setup.sh` models whose memory requirement (8, 16, 32, 64, 96 GB) your Mac meets. Choosing one kills whatever is on the port, starts the server and waits up to 20 minutes for it. The local path sets the four offline env vars.
+- **Local list on Linux and Windows:** the llama.cpp model the installer set up (`config.json` in `CCL_HOME`). If the proxy is already up on `CCL_PORT` it is reused; otherwise llama-server and the proxy are started for the session and stopped when you quit. Same four offline env vars.
+- **Extra Claude Code arguments (Linux, Windows):** anything after `--` goes to `claude`, e.g. `keepgoing --auto -- -p "finish the tests"`.
 
 `keepgoing --auto` skips the menu: the first free cloud model if you have a key, else the model already running on the port, else the biggest lineup model that fits your memory. The `StopFailure` hook in `scripts/limit-handoff.py` runs it for you when you hit a usage limit; see [Automatic keep going](AUTO-HANDOFF.md).
 

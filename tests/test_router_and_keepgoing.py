@@ -62,6 +62,14 @@ def test_estimate_tokens_and_has_image():
 
 # ─── keepgoing ───────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _mac_lineup(monkeypatch):
+    """These tests describe the Mac menu (the MLX lineup). The Linux and Windows menu is covered
+    in test_keepgoing_portable.py, so CI on a Linux runner tests the same thing as a Mac."""
+    monkeypatch.setattr(keepgoing, "IS_MAC", True)
+    monkeypatch.setattr(keepgoing, "IS_WINDOWS", False)
+
+
 def write_session(projects, name, cwd, user_turns, mtime=None):
     d = projects / "proj"
     d.mkdir(parents=True, exist_ok=True)
