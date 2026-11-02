@@ -93,6 +93,15 @@ _mlx_server_pids() {
   if [ -z "$listeners" ] && command -v ss >/dev/null 2>&1; then
     listeners="$(ss -Hltnp "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)"
   fi
+  # Last resort on Linux: match the listening socket's inode in /proc to the process holding it.
+  if [ -z "$listeners" ] && [ -r /proc/net/tcp ]; then
+    local hex inodes
+    hex="$(printf '%04X' "$port")"
+    inodes="$(awk -v h=":$hex" '$2 ~ h"$" && $4 == "0A" {print $10}' /proc/net/tcp /proc/net/tcp6 2>/dev/null)"
+    for i in $inodes; do
+      listeners="$listeners $(ls -l /proc/[0-9]*/fd 2>/dev/null | awk -v s="socket:[$i]" '/^\/proc\//{d=$1} index($0,s){split(d,a,"/"); print a[3]}' | sort -u)"
+    done
+  fi
   for pid in $listeners; do
     if ps -o command= -p "$pid" 2>/dev/null | grep -qE "mlx-native-server/server\.py|proxy/server\.py"; then
       printf '%s\n' "$pid"
