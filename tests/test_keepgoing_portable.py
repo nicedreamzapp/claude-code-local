@@ -510,3 +510,78 @@ def test_powershell_keep_function(tmp_path):
     assert out[0] == "did you mean: keep going"
     assert out[1] == "Function"
     assert os.path.normcase(os.path.realpath(out[2])) == os.path.normcase(str((ROOT / "portable" / "ccl.py").resolve()))
+
+
+# ─── Windows fixes: `--` through the profile functions, doctor port, doctor -Fix shims ──
+
+@pytest.mark.skipif(not POWERSHELL, reason="PowerShell not installed")
+def test_powershell_keep_going_passes_the_double_dash_through():
+    """PowerShell drops a bare `--` from a function's arguments; without putting it back,
+    `keep going --auto -- -p "..."` started claude interactively and it waited forever."""
+    hook = ROOT / "scripts" / "keepgoing-profile.ps1"
+    r = ps(f". '{hook}'; function global:python {{ 'PY:' + ($args[3..99] -join '|') }}; "
+           "keepgoing --auto -- -p 'finish the tests'; keep going --auto -- -p 'x y'; "
+           "keepgoing --auto; keepgoing; keep going -- -p z")
+    assert r.stdout.splitlines() == [
+        "PY:--auto|--|-p|finish the tests", "PY:--auto|--|-p|x y", "PY:--auto", "PY:", "PY:--|-p|z"], r.stderr
+
+
+def test_doctor_ps1_shim_copies_match_the_repo():
+    """doctor.ps1 -Fix writes these when a shim was deleted and git can't restore it."""
+    import re
+    src = (ROOT / "scripts" / "doctor.ps1").read_text()
+    for name in ("keepgoing.cmd", "keep.cmd"):
+        m = re.search(r'"%s" = @\'\n(.*?)\n\'@' % re.escape(name), src, re.S)
+        assert m, name
+        repo = (ROOT / "bin" / name).read_bytes().decode().replace("\r\n", "\n").rstrip("\n")
+        assert m.group(1) == repo, name
+
+
+def _doctor_ps1(tmp_path, *args, **env):
+    home = tmp_path / "pshome"
+    home.mkdir(exist_ok=True)
+    e = {"HOME": str(home), "PATH": os.environ["PATH"], "USERPROFILE": str(home),
+         "CCL_HOME": str(tmp_path / "ccl"), "CCL_PROFILES": str(home / "profile.ps1"), "CCL_NO_PATH": "1",
+         "BROKER_PORT": str(free_port()), "DOCK_PORT": str(free_port()), "FIAOS_PORT": str(free_port())}
+    e.update(env)
+    script = env.pop("_script", None) or str(ROOT / "scripts" / "doctor.ps1")
+    return subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, *args],
+                          env={k: v for k, v in e.items() if not k.startswith("_")},
+                          capture_output=True, text=True, timeout=180)
+
+
+@pytest.mark.skipif(not POWERSHELL, reason="PowerShell not installed")
+def test_doctor_ps1_reads_ccl_port(tmp_path):
+    port = free_port()
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b'{"status": "ok", "model": "m"}'
+            self.send_response(200)
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.HTTPServer(("127.0.0.1", port), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        r = _doctor_ps1(tmp_path, CCL_PORT=str(port))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert f"model server answering on port {port}" in r.stdout, r.stdout + r.stderr
+
+
+@pytest.mark.skipif(not POWERSHELL, reason="PowerShell not installed")
+def test_doctor_ps1_fix_restores_a_deleted_shim(tmp_path):
+    repo = tmp_path / "repo"  # a copy without .git: restored from doctor.ps1's own copies
+    for d in ("scripts", "bin", "portable"):
+        shutil.copytree(ROOT / d, repo / d, ignore=shutil.ignore_patterns("__pycache__"))
+    (repo / "bin" / "keepgoing.cmd").unlink()
+    r = _doctor_ps1(tmp_path, _script=str(repo / "scripts" / "doctor.ps1"))
+    assert "keep.cmd missing" in r.stdout and not (repo / "bin" / "keepgoing.cmd").exists()
+    r = _doctor_ps1(tmp_path, "-Fix", _script=str(repo / "scripts" / "doctor.ps1"))
+    assert "restored it (fixed)" in r.stdout, r.stdout + r.stderr
+    assert (repo / "bin" / "keepgoing.cmd").read_bytes() == (ROOT / "bin" / "keepgoing.cmd").read_bytes()

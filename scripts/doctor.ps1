@@ -2,14 +2,15 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\doctor.ps1 [-Fix] [-Report]
 #
-#   -Fix      safe repairs only: start your own scheduled task for a service that is down, and
-#             set up keep going (scripts\keepgoing-windows.ps1) if it is missing. Never deletes anything.
+#   -Fix      safe repairs only: start your own scheduled task for a service that is down, put back
+#             a deleted bin\keepgoing.cmd / keep.cmd, and set up keep going
+#             (scripts\keepgoing-windows.ps1) if it is missing. Never deletes anything.
 #   -Report   print a privacy-safe block to paste into a bug report (no usernames, home
 #             paths, hostnames, IPs, tokens or env values) instead of the full output
 #
 # Exit code: 0 when nothing failed, 1 when at least one check failed.
 # Add-ons that were never installed show as "not installed" and are never errors.
-# Overrides (also used by the tests): MLX_PORT 4000, BROKER_PORT 9223, DOCK_PORT 8899,
+# Overrides (also used by the tests): CCL_PORT or MLX_PORT 4000, BROKER_PORT 9223, DOCK_PORT 8899,
 # FIAOS_PORT 9000, CCL_HOME, CCL_DIR, NARRATE_DIR, NARRATE_DATA, FIAOS_DIR, MOONSTONE_DIR,
 # TH_DIR, MOONSTONE_TASK, FIAOS_TASK, CCL_PROFILES, CCL_NO_PATH.
 
@@ -189,17 +190,79 @@ function Test-Core {
     if ($free -ge 10) { Record "pass" "disk" "$free GB free" } else { Record "warn" "disk" "only $free GB free (models need 10 GB or more)" }
   } catch { }
 
-  # Server: starts on demand with the launcher, so down is a warning
-  Test-Service "server" "model server" ([int](EnvOr "MLX_PORT" "4000")) "ClaudeCodeLocal" $false
+  # Server: starts on demand with the launcher, so down is a warning. Same port the launcher and
+  # keep going use: CCL_PORT (MLX_PORT still wins, as in bin\keepgoing.py), else 4000.
+  Test-Service "server" "model server" ([int](EnvOr "MLX_PORT" (EnvOr "CCL_PORT" "4000"))) "ClaudeCodeLocal" $false
 }
 
 # keep going: bin\keepgoing.cmd on PATH and the PowerShell profile line (scripts\keepgoing-windows.ps1
 # installs both). An older install has neither, so missing is a warning; -Fix runs that installer.
+# The two keep going shims, exactly as the repo ships them (tests check they match bin\*.cmd). -Fix
+# puts back a deleted one: from git when the install is a clone, else from these copies.
+$KeepGoingShims = [ordered]@{
+  "keepgoing.cmd" = @'
+@echo off
+setlocal
+rem keepgoing for Windows: resume this folder's Claude Code conversation on a free or local model.
+rem   keepgoing            menu
+rem   keepgoing --auto     no menu (free cloud model first, then the installed llama.cpp model)
+rem   keepgoing --auto -- -p "finish the tests"     anything after -- goes to claude
+python -I "%~dp0..\portable\ccl.py" keepgoing %*
+exit /b %ERRORLEVEL%
+'@
+  "keep.cmd" = @'
+@echo off
+setlocal
+rem "keep going" for Windows cmd and PowerShell: same as keepgoing.cmd.
+if /i "%~1"=="going" (
+  shift
+  goto run
+)
+echo did you mean: keep going
+exit /b 1
+:run
+set "CCL_KG_ARGS="
+:collect
+if "%~1"=="" goto go
+set CCL_KG_ARGS=%CCL_KG_ARGS% %1
+shift
+goto collect
+:go
+python -I "%~dp0..\portable\ccl.py" keepgoing %CCL_KG_ARGS%
+exit /b %ERRORLEVEL%
+'@
+}
+
+function Restore-KeepGoingShims([string]$repo) {
+  $bin = Join-Path $repo "bin"
+  $missing = @($KeepGoingShims.Keys | Where-Object { -not (Test-Path (Join-Path $bin $_)) })
+  if (-not $missing) { return $true }
+  if ((Test-Path (Join-Path $repo ".git")) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+    & git -C $repo checkout -- @($missing | ForEach-Object { "bin/$_" }) 2>$null | Out-Null
+  }
+  New-Item -ItemType Directory -Force -Path $bin | Out-Null
+  foreach ($name in $missing) {
+    $path = Join-Path $bin $name
+    if (-not (Test-Path $path)) {
+      $text = ($KeepGoingShims[$name] -replace "`r?`n", "`r`n")
+      if (-not $text.EndsWith("`r`n")) { $text += "`r`n" }
+      [IO.File]::WriteAllText($path, $text, (New-Object System.Text.ASCIIEncoding))
+    }
+  }
+  return (@($KeepGoingShims.Keys | Where-Object { -not (Test-Path (Join-Path $bin $_)) }).Count -eq 0)
+}
+
 function Test-KeepGoing {
   $repo = Split-Path -Parent $PSScriptRoot
   $bin = Join-Path $repo "bin"
-  if (-not (Test-Path (Join-Path $bin "keepgoing.cmd"))) {
-    Record "fail" "keepgoing" "bin\keepgoing.cmd missing from the install (re-run the installer)"; return
+  if (-not (Test-Path (Join-Path $bin "keepgoing.cmd")) -or -not (Test-Path (Join-Path $bin "keep.cmd"))) {
+    if (-not $Fix) {
+      Record "fail" "keepgoing" "bin\keepgoing.cmd or bin\keep.cmd missing from the install (run with -Fix to restore it)"; return
+    }
+    if (-not (Restore-KeepGoingShims $repo)) {
+      Record "fail" "keepgoing" "bin\keepgoing.cmd missing and could not be restored (re-run the installer)"; return
+    }
+    Record "pass" "keepgoing-shim" "bin\keepgoing.cmd was missing; restored it (fixed)"
   }
   $docs = [Environment]::GetFolderPath("MyDocuments")
   $profiles = if ($env:CCL_PROFILES) { @($env:CCL_PROFILES -split ';' | Where-Object { $_ }) }
@@ -277,7 +340,7 @@ Say ""
 Say "=============================================="
 Say "    Claude Code Local - Doctor (Windows)"
 Say "=============================================="
-if ($Fix) { Say "-Fix: safe repairs only (start your own scheduled task). Nothing is deleted." }
+if ($Fix) { Say "-Fix: safe repairs only (start your own scheduled task, restore keep going). Nothing is deleted." }
 
 $cpu = try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim() } catch { "unknown CPU" }
 $gpu = try { (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name.Trim() } catch { "unknown GPU" }
