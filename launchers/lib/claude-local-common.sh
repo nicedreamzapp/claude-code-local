@@ -87,23 +87,10 @@ resolve_mlx_model() {
 # the listener on that one port whose command line is our server.py. A server on another port
 # (another user's, a demo, a benchmark) is never touched, and neither is a non-server process.
 _mlx_server_pids() {
-  local port="${1:-4000}" pid listeners
-  listeners="$(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null)"
-  # Some Linux boxes (CI runners, containers) give lsof nothing; ss reads the same sockets.
-  if [ -z "$listeners" ] && command -v ss >/dev/null 2>&1; then
-    listeners="$(ss -Hltnp "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)"
-  fi
-  # Last resort on Linux: match the listening socket's inode in /proc to the process holding it.
-  if [ -z "$listeners" ] && [ -r /proc/net/tcp ]; then
-    local hex inodes
-    hex="$(printf '%04X' "$port")"
-    inodes="$(awk -v h=":$hex" '$2 ~ h"$" && $4 == "0A" {print $10}' /proc/net/tcp /proc/net/tcp6 2>/dev/null)"
-    for i in $inodes; do
-      listeners="$listeners $(ls -l /proc/[0-9]*/fd 2>/dev/null | awk -v s="socket:[$i]" '/^\/proc\//{d=$1} index($0,s){split(d,a,"/"); print a[3]}' | sort -u)"
-    done
-  fi
-  for pid in $listeners; do
-    if ps -o command= -p "$pid" 2>/dev/null | grep -qE "mlx-native-server/server\.py|proxy/server\.py"; then
+  local port="${1:-4000}" pid
+  for pid in $(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null); do
+    # -ww: without it Linux ps cuts the command at 80 columns and long paths never match
+    if ps -ww -o command= -p "$pid" 2>/dev/null | grep -qE "mlx-native-server/server\.py|proxy/server\.py"; then
       printf '%s\n' "$pid"
     fi
   done

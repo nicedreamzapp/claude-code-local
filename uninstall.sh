@@ -93,7 +93,7 @@ CCL_PORT="${CCL_PORT:-4000}"
 MLX_PID=$(lsof -ti "tcp:$CCL_PORT" -sTCP:LISTEN 2>/dev/null || true)
 stopped=0
 for pid in $MLX_PID; do
-  if ps -o command= -p "$pid" 2>/dev/null | grep -q "mlx-native-server/server.py\|proxy/server.py"; then
+  if ps -ww -o command= -p "$pid" 2>/dev/null | grep -q "mlx-native-server/server.py\|proxy/server.py"; then
     kill "$pid" 2>/dev/null || true
     echo "✓ Stopped MLX server (PID $pid)"
     stopped=1
