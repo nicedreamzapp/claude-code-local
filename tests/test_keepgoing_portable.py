@@ -250,6 +250,7 @@ def test_keepgoing_env_file_loads_and_real_env_wins(tmp_path):
 def run_kg(tmp_path, monkeypatch):
     """Call ccl.cmd_keepgoing with the picker, claude and the servers stubbed."""
     calls = {"claude": [], "started": 0, "terminated": 0}
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))  # never ~/.claude.json
     monkeypatch.setattr(ccl, "KEEPGOING_ENV", str(tmp_path / "none.env"))
     monkeypatch.setattr(ccl, "load_keepgoing_env", lambda *a, **k: None)
     monkeypatch.setattr(ccl, "resolve_claude_bin", lambda: "/bin/claude")
@@ -286,7 +287,10 @@ def test_cmd_keepgoing_local_starts_llama_and_resumes(run_kg, monkeypatch):
     rc = run_kg(("abc", "local", "Qwen 3.5 4B [Q4_K_M]", False), ["--auto", "--", "-p", "hi"])
     assert rc == 7
     cmd, env = run_kg.calls["claude"][0]
-    assert cmd == ["/bin/claude", "--model", "claude-sonnet-4-6", "--resume", "abc", "-p", "hi"]
+    # the header names the real local model, not a Claude model
+    assert cmd == ["/bin/claude", "--model", "local:Qwen-3.5-4B-Q4_K_M", "--resume", "abc", "-p", "hi"]
+    assert env["ANTHROPIC_MODEL"] == "local:Qwen-3.5-4B-Q4_K_M"
+    assert env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "local:Qwen-3.5-4B-Q4_K_M"
     assert env["ANTHROPIC_BASE_URL"] == ccl.PROXY_URL and env["ANTHROPIC_API_KEY"] == "sk-local"
     assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
     assert "ANTHROPIC_AUTH_TOKEN" not in env
@@ -360,7 +364,8 @@ FAKE_CLAUDE = """\
 import json, os, sys
 with open(os.environ["FAKE_CLAUDE_LOG"], "w") as f:
     json.dump({"argv": sys.argv[1:], "base": os.environ.get("ANTHROPIC_BASE_URL"),
-               "key": os.environ.get("ANTHROPIC_API_KEY")}, f)
+               "key": os.environ.get("ANTHROPIC_API_KEY"),
+               "model": os.environ.get("ANTHROPIC_MODEL")}, f)
 """
 
 
@@ -409,9 +414,14 @@ def test_ccl_keepgoing_end_to_end_against_a_running_proxy(tmp_path):
         srv.server_close()
     assert r.returncode == 0, r.stderr + r.stdout
     got = json.loads(log.read_text())
-    assert got["argv"] == ["--model", "claude-sonnet-4-6", "--resume", "e2e-session", "-p", "what was the word?"]
+    assert got["argv"] == ["--model", "local:Qwen-3.5-4B-Q4_K_M", "--resume", "e2e-session",
+                           "-p", "what was the word?"]
     assert got["base"] == f"http://localhost:{port}" and got["key"] == "sk-local"
+    assert got["model"] == "local:Qwen-3.5-4B-Q4_K_M"
     assert "already running" in r.stderr
+    # the placeholder key was pre-approved, so the first run doesn't stop on the API key question
+    cfg = json.loads((cfgdir / ".claude.json").read_text())
+    assert cfg["customApiKeyResponses"]["approved"] == ["sk-local"]
 
 
 # ─── shell glue ──────────────────────────────────────────────────────────────

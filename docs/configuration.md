@@ -126,7 +126,7 @@ The `.command` files in `launchers/` are bash scripts for macOS. All but the two
 
 Two details of the shared library:
 
-- **Model-aware restart.** `ensure_mlx_server` reads `/health` and compares the last path component of the running model with the one you asked for, ignoring case. If they differ, it stops the server (`pkill -f mlx-native-server/server.py`) and starts the right one. `force_restart_mlx_server` always restarts, because some settings only apply at process start.
+- **Model-aware restart.** `ensure_mlx_server` reads `/health` and compares the last path component of the running model with the one you asked for, ignoring case. If they differ, it stops only the server listening on port 4000 (matched by port and by its `server.py` command line, so servers on other ports are left alone) and starts the right one. `force_restart_mlx_server` always restarts, because some settings only apply at process start.
 - **Local folders first.** `resolve_mlx_model` uses a flat folder such as `~/.cache/huggingface/hub/gemma-4-31b-it-abliterated-4bit-mlx` if it exists and contains `config.json`, so mlx-lm loads from disk instead of downloading. Otherwise it passes the Hugging Face ID.
 
 The server log goes to `/tmp/mlx-server.log`. The health wait is 180 checks two seconds apart (six minutes).

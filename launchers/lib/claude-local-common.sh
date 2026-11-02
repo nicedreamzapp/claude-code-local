@@ -78,8 +78,24 @@ resolve_mlx_model() {
   fi
 }
 
+# The launchers' server listens on 4000. Pids of the claude-code-local server(s) listening there:
+# the listener on that one port whose command line is our server.py. A server on another port
+# (another user's, a demo, a benchmark) is never touched, and neither is a non-server process.
+_mlx_server_pids() {
+  local port="${1:-4000}" pid
+  for pid in $(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null); do
+    if ps -o command= -p "$pid" 2>/dev/null | grep -qE "mlx-native-server/server\.py|proxy/server\.py"; then
+      printf '%s\n' "$pid"
+    fi
+  done
+}
+
+# Stop only the server on port 4000 (the one these launchers start), never every server.py on the
+# machine: a `pkill -f mlx-native-server/server.py` here used to take down servers on other ports.
 _stop_mlx_server() {
-  pkill -f "mlx-native-server/server.py" 2>/dev/null || true
+  local pids
+  pids="$(_mlx_server_pids 4000)"
+  [ -n "$pids" ] && kill $pids 2>/dev/null
   local i
   for i in $(seq 1 15); do
     if ! lsof -i :4000 >/dev/null 2>&1; then

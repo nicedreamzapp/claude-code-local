@@ -535,10 +535,32 @@ def start_servers(cfg, log_path=None):
         raise
 
 
-def local_claude_env():
+def _kg():
+    """bin/keepgoing.py, which holds the shared keepgoing helpers."""
+    bindir = os.path.join(REPO, "bin")
+    if bindir not in sys.path:
+        sys.path.insert(0, bindir)
+    import keepgoing  # bin/keepgoing.py
+    return keepgoing
+
+
+def local_claude_env(model=None):
+    """Claude Code's environment for a local run. With the model's label, Claude Code is told the
+    real model ("local:<model>") so its header shows it instead of a Claude model; the proxy answers
+    any model name. The sk-local placeholder is pre-approved in ~/.claude.json so the first run
+    doesn't stop on "Detected a custom API key"."""
+    kg = _kg()
     cenv = dict(os.environ)
     cenv["ANTHROPIC_BASE_URL"] = PROXY_URL
-    cenv["ANTHROPIC_API_KEY"] = "sk-local"
+    cenv["ANTHROPIC_API_KEY"] = kg.LOCAL_KEY
+    if model:
+        alias = kg.local_model_alias(model)
+        for k in ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                  "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL"):
+            cenv[k] = alias
+    if kg.approve_local_key() == "rejected":
+        print(f"  Claude Code has the local key ({kg.LOCAL_KEY}) marked as rejected. "
+              "Answer Yes when it asks about the custom API key.")
     return cenv
 
 
@@ -560,8 +582,10 @@ def cmd_run(args):
             proxy_proc.wait()
             return
 
-        print(f"Launching Claude Code ({cfg['model_name']} [{cfg['quant']}], 100% local)\n")
-        subprocess.call([claude, "--model", "claude-sonnet-4-6"], env=local_claude_env())
+        label = f"{cfg['model_name']} [{cfg['quant']}]"
+        print(f"Launching Claude Code ({label}, 100% local)\n")
+        cenv = local_claude_env(label)
+        subprocess.call([claude, "--model", cenv["ANTHROPIC_MODEL"]], env=cenv)
         proxy_proc.terminate()
     finally:
         llama_proc.terminate()
@@ -603,10 +627,7 @@ def pick_for_keepgoing(own_args):
     """Run bin/keepgoing.py's picker; (session_id, kind, model, already_running) or None."""
     import contextlib
     import io
-    bindir = os.path.join(REPO, "bin")
-    if bindir not in sys.path:
-        sys.path.insert(0, bindir)
-    import keepgoing as kg  # bin/keepgoing.py
+    kg = _kg()
     out = io.StringIO()
     try:
         with contextlib.redirect_stdout(out):
@@ -669,11 +690,11 @@ def cmd_keepgoing(argv):
             log = os.path.join(home(), "keepgoing-server.log")
             print(f"  (server output: {log})")
             procs = start_servers(load_config(), log_path=log)
-        cenv = local_claude_env()
+        cenv = local_claude_env(model)
         cenv.update(OFFLINE_ENV)
         cenv.pop("ANTHROPIC_AUTH_TOKEN", None)
         print(f"\n  Continuing on {model}, 100% on this PC …\n")
-        return subprocess.call([claude, "--model", "claude-sonnet-4-6", "--resume", sid] + extra,
+        return subprocess.call([claude, "--model", cenv["ANTHROPIC_MODEL"], "--resume", sid] + extra,
                                env=cenv)
     finally:
         if procs:

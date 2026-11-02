@@ -24,8 +24,11 @@ import glob
 import json
 import ntpath
 import os
+import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
@@ -47,6 +50,86 @@ LOCAL = [
     ("divinetribe/gemma-4-31b-it-abliterated-4bit-mlx", "Gemma 4 31B", 64),
     ("lmstudio-community/Qwen3.8-27B-MLX-8bit", "Qwen 3.8 27B", 96),
 ]
+
+
+# The placeholder key every local launch hands Claude Code. Our servers never check it.
+LOCAL_KEY = "sk-local"
+
+
+def local_model_alias(model):
+    """The model name Claude Code gets on a local run, and so shows in its header: "local:" plus
+    the model's own name ("mlx-community/Qwen3.5-4B-bf16" -> "local:Qwen3.5-4B-bf16", the llama.cpp
+    label "Qwen 3.5 4B [Q4_K_M]" -> "local:Qwen-3.5-4B-Q4_K_M"). Both local servers answer whatever
+    model name a request carries, so this only changes what you see, never which model runs."""
+    name = re.split(r"[\\/]", (model or "").strip().rstrip("/\\"))[-1]
+    name = re.sub(r"\s+", "-", re.sub(r"[\[\]]", "", name).strip())
+    return f"local:{name}" if name else "local"
+
+
+def claude_config_file():
+    """Claude Code's own settings file: ~/.claude.json, or .claude.json inside CLAUDE_CONFIG_DIR."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~")
+    return os.path.join(base, ".claude.json")
+
+
+def approve_local_key(path=None, key=LOCAL_KEY):
+    """Record the local placeholder key as approved, the way Claude Code does when you answer Yes
+    to "Detected a custom API key": the key's last 20 characters go in
+    customApiKeyResponses.approved in ~/.claude.json. Without it the first local run stops on that
+    prompt. Only that one entry changes; every other key in the file is kept. The file is backed up
+    to .claude.json.ccl-backup first and replaced atomically.
+
+    Returns "already", "approved", "rejected" (you said No to this key before, so it is left
+    alone) or "skipped" (the file isn't valid JSON, or couldn't be written)."""
+    path = path or claude_config_file()
+    tail = key[-20:]
+    exists = os.path.exists(path)
+    try:
+        if exists:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = {}
+    except (OSError, ValueError):
+        return "skipped"
+    if not isinstance(data, dict):
+        return "skipped"
+    resp = data.get("customApiKeyResponses")
+    if resp is None:
+        resp = {"approved": [], "rejected": []}
+    if not isinstance(resp, dict) or not isinstance(resp.get("approved", []), list):
+        return "skipped"
+    if tail in resp.get("approved", []):
+        return "already"
+    if tail in (resp.get("rejected") or []):
+        return "rejected"
+    resp = dict(resp)
+    resp["approved"] = list(resp.get("approved", [])) + [tail]
+    resp.setdefault("rejected", [])
+    data["customApiKeyResponses"] = resp
+    folder = os.path.dirname(os.path.abspath(path))
+    tmp = None
+    try:
+        os.makedirs(folder, exist_ok=True)
+        if exists:
+            shutil.copy2(path, path + ".ccl-backup")
+        fd, tmp = tempfile.mkstemp(dir=folder, prefix=".claude.json.", suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        if exists:
+            shutil.copymode(path, tmp)
+        else:
+            os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+        tmp = None
+    except OSError:
+        return "skipped"
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+    return "approved"
 
 
 def this_machine():
@@ -263,5 +346,19 @@ def main(argv=None):
     print("\t".join([sid, kind, model, str(already)]))
 
 
+def cli(argv):
+    """Helpers for bin/keepgoing (bash): --local-alias MODEL prints the header name for a local run;
+    --approve-local-key pre-approves sk-local in ~/.claude.json. Anything else runs the picker."""
+    if argv[:1] == ["--local-alias"]:
+        print(local_model_alias(argv[1] if len(argv) > 1 else ""))
+        return
+    if argv[:1] == ["--approve-local-key"]:
+        if approve_local_key() == "rejected":
+            say(f"{C['ylw']}  Claude Code has the local key ({LOCAL_KEY}) marked as rejected. "
+                f"Answer Yes when it asks about the custom API key.{C['off']}")
+        return
+    main(argv)
+
+
 if __name__ == "__main__":
-    main()
+    cli(sys.argv[1:])

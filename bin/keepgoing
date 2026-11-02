@@ -70,9 +70,17 @@ export ANTHROPIC_BASE_URL="http://localhost:$PORT" ANTHROPIC_API_KEY=sk-local
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
        CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 unset ANTHROPIC_AUTH_TOKEN
+# Claude Code's header shows the model name it was given, so give it the real one ("local:<model>").
+# The server answers any name. Every background call uses it too, so nothing claims to be Sonnet.
+ALIAS="$(python3 "$HERE/keepgoing.py" --local-alias "$MODEL")"
+export ANTHROPIC_MODEL="$ALIAS" ANTHROPIC_DEFAULT_HAIKU_MODEL="$ALIAS" \
+       ANTHROPIC_DEFAULT_SONNET_MODEL="$ALIAS" ANTHROPIC_DEFAULT_OPUS_MODEL="$ALIAS"
+# sk-local is a placeholder, not a real key. Record it as approved so the first run doesn't stop on
+# Claude Code's "Detected a custom API key" question (changes only that entry in ~/.claude.json).
+python3 "$HERE/keepgoing.py" --approve-local-key
 echo ""; echo "  Continuing on $MODEL, 100% on this Mac …"; echo ""
 if [ -n "$KEEPGOING_AFTER_LOCAL" ]; then
-  "$CLAUDE_BIN" --model claude-sonnet-4-6 --resume "$SID"
+  "$CLAUDE_BIN" --model "$ALIAS" --resume "$SID"
 else
-  exec "$CLAUDE_BIN" --model claude-sonnet-4-6 --resume "$SID"
+  exec "$CLAUDE_BIN" --model "$ALIAS" --resume "$SID"
 fi
