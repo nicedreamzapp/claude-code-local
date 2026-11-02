@@ -102,9 +102,14 @@ done
 [ "$stopped" -eq 1 ] || echo "· No Claude Code Local server running on :$CCL_PORT"
 
 # ── MLX server log ────────────────────────────────────────────
-if [ -f /tmp/mlx-server.log ]; then
-  rm /tmp/mlx-server.log
+MLX_LOG="/tmp/mlx-server-$(id -un).log"
+if [ -O /tmp/mlx-server.log ]; then  # the old shared name, only if it is ours
+  rm -f /tmp/mlx-server.log
   echo "✓ Removed /tmp/mlx-server.log"
+fi
+if [ -f "$MLX_LOG" ]; then
+  rm "$MLX_LOG"
+  echo "✓ Removed $MLX_LOG"
 fi
 
 # ── Downloaded models (optional) ──────────────────────────────

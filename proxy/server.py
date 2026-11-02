@@ -119,12 +119,13 @@ CODE_MODE_ENABLED = os.environ.get("MLX_CODE_MODE", "1") != "0"
 # Vision: "auto" (default) turns it on when mlx-vlm is installed AND the model's
 # config.json has a vision_config. "1" requires it, "0" keeps the text-only path.
 VISION_SETTING = (os.environ.get("MLX_VISION") or "auto").strip().lower()
-# Hard ceiling on prompt tokens. A request over it gets the same 400 the real
-# API sends for an over-long prompt, so Claude Code compacts instead of the
-# server allocating KV cache the Mac does not have. 0 = no ceiling. In our
-# runs that 400 is what triggered compaction: Claude Code 2.1 did not compact
-# on its own first, even with CLAUDE_CODE_AUTO_COMPACT_WINDOW set to the same
-# number (scripts/mac-tier.sh sets both).
+# Hard ceiling on prompt + answer tokens. A prompt over it (or one that leaves
+# no room to answer) gets the same 400 the real API sends for an over-long
+# prompt, so Claude Code compacts instead of the server allocating KV cache the
+# Mac does not have, and max_tokens is trimmed to the room left. 0 = no
+# ceiling. This is the only thing that enforces a small window: Claude Code
+# 2.1.306 treats any CLAUDE_CODE_AUTO_COMPACT_WINDOW under 100000 as 100000, so
+# scripts/mac-tier.sh no longer sets it for the 16K tiers.
 MAX_CONTEXT = env_int("MLX_MAX_CONTEXT", 0)
 # Longest side, in pixels, an image is shrunk to before the vision tower sees
 # it. A 1568x980 screenshot raised the server's peak by about 0.4 GB on
@@ -1974,6 +1975,26 @@ def check_context(prompt_tokens, limit=None):
         raise PromptTooLong(f"prompt is too long: {prompt_tokens} tokens > {limit} maximum")
 
 
+# Under MLX_MAX_CONTEXT a prompt must leave at least this much room to answer
+# (or the whole max_tokens, if that is smaller); otherwise it is "too long".
+MIN_ANSWER_ROOM = 1024
+
+
+def fit_max_tokens(prompt_tokens, max_tokens, limit=None):
+    """max_tokens trimmed so prompt + answer stays inside MLX_MAX_CONTEXT. A prompt
+    that leaves less than MIN_ANSWER_ROOM gets PromptTooLong, so Claude Code
+    compacts instead of getting a cut-off answer."""
+    limit = MAX_CONTEXT if limit is None else limit
+    check_context(prompt_tokens, limit)
+    if not limit:
+        return max_tokens
+    room = limit - prompt_tokens
+    if room < min(max_tokens, MIN_ANSWER_ROOM):
+        raise PromptTooLong(f"prompt is too long: {prompt_tokens} tokens leaves {room} of "
+                            f"{limit} for the answer")
+    return min(max_tokens, room)
+
+
 def generate_response(body, on_start=None, on_text=None):
     """Run MLX inference and return Anthropic-formatted response.
 
@@ -2045,10 +2066,12 @@ def generate_response(body, on_start=None, on_text=None):
 
     # Tokenize (with tools if present)
     token_ids = tokenize_messages(messages, tools=llm_tools)
-    if compaction and MAX_CONTEXT and len(token_ids) > MAX_CONTEXT:
+    # A compaction request is trimmed to fit, leaving room for the summary.
+    compact_budget = MAX_CONTEXT - min(max_tokens, MIN_ANSWER_ROOM) if MAX_CONTEXT else 0
+    if compaction and MAX_CONTEXT and len(token_ids) > compact_budget:
         before = len(messages)
         messages, _ = fit_compaction(
-            messages, lambda m: len(tokenize_messages(m, tools=llm_tools)), MAX_CONTEXT)
+            messages, lambda m: len(tokenize_messages(m, tools=llm_tools)), compact_budget)
         token_ids = tokenize_messages(messages, tools=llm_tools)
         log(f"  Compaction over MLX_MAX_CONTEXT: dropped {before - len(messages)} oldest "
             f"messages to fit ({len(token_ids)} tokens)")
@@ -2064,7 +2087,10 @@ def generate_response(body, on_start=None, on_text=None):
 
     prompt_tokens = len(token_ids)
     log(f"  Prompt: {prompt_tokens} tokens")
-    check_context(prompt_tokens)
+    fitted = fit_max_tokens(prompt_tokens, max_tokens)
+    if fitted != max_tokens:
+        log(f"  max_tokens {max_tokens} -> {fitted} to stay inside MLX_MAX_CONTEXT")
+        max_tokens = fitted
 
     def run_generation(msgs, prompt_ids, kwargs):
         """One generation pass. Vision: mlx-vlm, whole prompt, images from the

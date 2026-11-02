@@ -33,8 +33,8 @@ echo "╚═══════════════════════�
 echo ""
 
 # ── System detection ──────────────────────────────────────────
-MEM_GB=$(sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}')
-CHIP=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')
+MEM_GB=$(/usr/sbin/sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}')
+CHIP=$(/usr/sbin/sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')
 
 echo "Detected: $CHIP"
 echo "Memory:   ${MEM_GB} GB"
@@ -142,11 +142,9 @@ ln -sf "$SCRIPT_DIR/proxy/server.py" "$SERVER_DIR/server.py"
 echo "MLX server installed (symlink) → $SERVER_DIR/server.py -> $SCRIPT_DIR/proxy/server.py"
 
 # ── Create desktop launcher ───────────────────────────────────
-CLAUDE_BIN=$(which claude 2>/dev/null || echo "$HOME/.local/bin/claude")
-if [ ! -f "$CLAUDE_BIN" ]; then
-  echo ""
-  echo "WARNING: Claude Code not found. Install it with:"
-  echo "  npm install -g @anthropic-ai/claude-code"
+# Claude Code itself: installed here if missing, with the same official installer as on Linux.
+. "$SCRIPT_DIR/scripts/install-claude-code.sh"
+if ! CLAUDE_BIN="$(ccl_ensure_claude)"; then
   echo ""
   CLAUDE_BIN="\$HOME/.local/bin/claude"
 fi
@@ -171,7 +169,7 @@ MLX_PYTHON="$MLX_VENV/bin/python3"
 MLX_SERVER="$SERVER_DIR/server.py"
 
 if ! lsof -i :4000 >/dev/null 2>&1; then
-  MLX_MODEL="$MODEL_ID" "\$MLX_PYTHON" "\$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  MLX_MODEL="$MODEL_ID" "\$MLX_PYTHON" "\$MLX_SERVER" >"/tmp/mlx-server-\$(id -un).log" 2>&1 &
   echo "  Loading $MODEL_LABEL on MLX..."
   while ! curl -s http://localhost:4000/health 2>/dev/null | grep -q "ok"; do
     sleep 2

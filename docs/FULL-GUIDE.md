@@ -223,7 +223,7 @@ Four ways to run the lineup. Each one is a double-clickable launcher in `launche
 
 Also need:
 - 🐍 **Python 3.12+** (for MLX)
-- 🤖 **Claude Code** (`npm install -g @anthropic-ai/claude-code`)
+- 🤖 **Claude Code** (the installer adds it if missing: `curl -fsSL https://claude.ai/install.sh | bash`)
 
 ---
 

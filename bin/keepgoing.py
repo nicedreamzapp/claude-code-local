@@ -232,7 +232,9 @@ def free_cloud_models(key, limit=3):
 
 def mac_ram_gb():
     try:
-        out = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout
+        # full path: /usr/sbin is often missing from PATH (hooks, launchd), and RAM then read as 0
+        sysctl = "/usr/sbin/sysctl" if os.path.exists("/usr/sbin/sysctl") else "sysctl"
+        out = subprocess.run([sysctl, "-n", "hw.memsize"], capture_output=True, text=True).stdout
         return int(out.strip()) // (1 << 30)
     except Exception:
         return 0

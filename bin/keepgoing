@@ -25,6 +25,7 @@ PORT="${MLX_PORT:-4000}"
 PYTHON="${MLX_PYTHON:-$HOME/.local/mlx-server/bin/python3}"
 SERVER="${MLX_SERVER:-$HOME/.local/mlx-native-server/server.py}"
 CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
+MLX_LOG="${MLX_LOG:-/tmp/mlx-server-$(id -un).log}"  # one per user
 
 SEL="$(python3 "$HERE/keepgoing.py" "$@")" || exit 0
 IFS=$'\t' read -r SID KIND MODEL ALREADY <<< "$SEL"
@@ -53,15 +54,15 @@ if [ "$ALREADY" != "1" ]; then
     sleep 3
   fi
   echo ""; echo "  Loading $MODEL on this Mac (the first time downloads it) …"
-  MLX_MODEL="$MODEL" MLX_PORT="$PORT" "$PYTHON" "$SERVER" >/tmp/mlx-server.log 2>&1 &
+  MLX_MODEL="$MODEL" MLX_PORT="$PORT" "$PYTHON" "$SERVER" >"$MLX_LOG" 2>&1 &
   for i in $(seq 1 600); do
     curl -s "http://localhost:$PORT/health" 2>/dev/null | grep -q '"ok"' && break
     sleep 2
     [ $((i % 15)) -eq 0 ] && echo "  still loading … ($((i * 2))s)"
   done
   curl -s "http://localhost:$PORT/health" 2>/dev/null | grep -q '"ok"' || {
-    echo "  The model didn't come up. Last lines of /tmp/mlx-server.log:"
-    tail -5 /tmp/mlx-server.log | sed 's/^/    /'
+    echo "  The model didn't come up. Last lines of $MLX_LOG:"
+    tail -5 "$MLX_LOG" | sed 's/^/    /'
     exit 1; }
 fi
 

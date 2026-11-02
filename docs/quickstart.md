@@ -37,7 +37,7 @@ ANTHROPIC_API_KEY=sk-local \
 claude --model claude-sonnet-4-6
 ```
 
-The server prints its settings on start, then logs every request to stderr. Launchers send that log to `/tmp/mlx-server.log`.
+The server prints its settings on start, then logs every request to stderr. Launchers send that log to `/tmp/mlx-server-<your user name>.log`.
 
 ## 3. Check the server
 

@@ -92,8 +92,8 @@ get lost on long, many-file jobs, especially after a compaction. Keep each reque
 |---|---|---|---|
 | `MLX_MODEL` | Qwen3.5-4B-bf16 | Qwen3.5-2B-MLX-8bit | the model folder |
 | `MLX_VISION` | 1 | 1 | load through mlx-vlm so images reach the model |
-| `MLX_MAX_CONTEXT` | 16384 | 16384 | the server refuses a longer prompt with the API's own "prompt is too long" 400 |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | 16384 | 16384 | tells Claude Code the window is that size |
+| `MLX_MAX_CONTEXT` | 16384 | 16384 | the server refuses a longer prompt with the API's own "prompt is too long" 400 (Claude Code then compacts) and trims each answer so prompt + answer fits |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | not set | not set | Claude Code 2.1.306 treats anything under 100000 as 100000, so a 16K value would do nothing; the server's ceiling enforces the window instead |
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 8192 | 4096 | caps one answer |
 | `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS` | 4000 | 4000 | a big file is read in pieces instead of filling the window in one turn |
 | `BASH_MAX_OUTPUT_LENGTH` | 12000 | 12000 | same for command output |

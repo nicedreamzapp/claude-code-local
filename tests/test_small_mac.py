@@ -239,7 +239,9 @@ def test_tier_by_memory(gb, tier, model, ctx):
     assert v["CCL_TIER"] == tier
     assert v["CCL_MODEL_ID"] == model
     assert v["MLX_MAX_CONTEXT"] == ctx
-    assert v["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == ctx
+    # Claude Code treats any window under 100000 as 100000, so the 16K tiers don't set one;
+    # the server's MLX_MAX_CONTEXT ceiling enforces it instead.
+    assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW" not in v
     assert v["MLX_VISION"] == "1"
     assert v["MLX_MODEL"].endswith("/" + model.split("/")[1])
 

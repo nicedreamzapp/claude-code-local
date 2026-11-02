@@ -10,6 +10,11 @@
 
 MLX_SERVER="${MLX_SERVER:-$HOME/.local/mlx-native-server/server.py}"
 MLX_PYTHON="${MLX_PYTHON:-$HOME/.local/mlx-server/bin/python3}"
+# The server log, one per user: a shared /tmp/mlx-server.log mixed users' logs, and once another
+# user owned it, this user's launcher couldn't write it at all.
+MLX_LOG="${MLX_LOG:-/tmp/mlx-server-$(id -un).log}"
+# How long to wait for /health: 180 checks, 2 seconds apart.
+MLX_HEALTH_ATTEMPTS=180
 
 # Read the running server's /health and extract the "model" field. Prints the
 # model path/id on stdout, or nothing if the server isn't up.
@@ -45,7 +50,7 @@ _wait_for_mlx_health() {
   # 180 attempts × 2s = 6 minutes. Enough for a cold load of a large 8-bit model
   # on a warm file cache; not enough for a first-time download from HF — use
   # resolve_mlx_model to point at a local path and avoid downloads entirely.
-  local attempts="${1:-180}"
+  local attempts="${1:-$MLX_HEALTH_ATTEMPTS}"
   local i
   for i in $(seq 1 "$attempts"); do
     if curl -s http://localhost:4000/health 2>/dev/null | grep -q '"status": "ok"'; then
@@ -133,10 +138,10 @@ ensure_mlx_server() {
   MLX_MODEL="$desired" \
   MLX_KV_BITS="${MLX_KV_BITS:-}" \
   MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
-  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  "$MLX_PYTHON" "$MLX_SERVER" >"$MLX_LOG" 2>&1 &
   if ! _wait_for_mlx_health; then
-    echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
-    echo "  Check /tmp/mlx-server.log for details"
+    echo "  ERROR: MLX server failed to respond on port 4000 within $((MLX_HEALTH_ATTEMPTS * 2))s"
+    echo "  Check $MLX_LOG for details"
     exit 1
   fi
 }
@@ -157,10 +162,10 @@ force_restart_mlx_server() {
   MLX_MODEL="$desired" \
   MLX_KV_BITS="${MLX_KV_BITS:-}" \
   MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
-  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  "$MLX_PYTHON" "$MLX_SERVER" >"$MLX_LOG" 2>&1 &
   if ! _wait_for_mlx_health; then
-    echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
-    echo "  Check /tmp/mlx-server.log for details"
+    echo "  ERROR: MLX server failed to respond on port 4000 within $((MLX_HEALTH_ATTEMPTS * 2))s"
+    echo "  Check $MLX_LOG for details"
     exit 1
   fi
 }

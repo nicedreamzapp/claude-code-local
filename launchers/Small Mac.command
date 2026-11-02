@@ -41,13 +41,15 @@ ensure_mlx_server "$MLX_MODEL" \
 clear
 echo ""
 echo "  → Claude Code with LOCAL AI ($CCL_MODEL_LABEL)"
-echo "  → $CCL_TIER tier: ${MLX_MAX_CONTEXT}-token context, compacts before it fills"
+echo "  → $CCL_TIER tier: ${MLX_MAX_CONTEXT}-token context, compacts when it fills"
 echo "  → Running on Apple Silicon — no cloud, no API fees"
 echo ""
 
 # --bare forces API-key auth, same as Claude Local.command. The tier's
-# CLAUDE_CODE_AUTO_COMPACT_WINDOW / CLAUDE_CODE_MAX_OUTPUT_TOKENS are exported
-# by mac-tier.sh and reach Claude Code from this environment.
+# CLAUDE_CODE_MAX_OUTPUT_TOKENS and friends are exported by mac-tier.sh and
+# reach Claude Code from this environment. The 16K window is enforced by the
+# server (MLX_MAX_CONTEXT), not CLAUDE_CODE_AUTO_COMPACT_WINDOW, which Claude
+# Code ignores under 100000.
 ANTHROPIC_BASE_URL=http://localhost:4000 \
 ANTHROPIC_API_KEY=sk-local \
 CLAUDE_SESSION_LABEL="Small Mac · Local" \

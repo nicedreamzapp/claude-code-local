@@ -16,7 +16,7 @@ description: >-
 | `git` | `install.sh` clones the repo | `install.sh` stops and suggests `xcode-select --install` |
 | Homebrew | Installs Python 3.12 | `setup.sh` installs Homebrew if `brew` is missing |
 | Python 3.12 | The MLX virtualenv is created with `python3.12` | `setup.sh` runs `brew install python@3.12` if missing |
-| Claude Code CLI | The thing you actually use | `setup.sh` warns if `claude` is not found; install with `npm install -g @anthropic-ai/claude-code` |
+| Claude Code CLI | The thing you actually use | `setup.sh` (and the Linux setup) installs it if `claude` is not found, with the official `curl -fsSL https://claude.ai/install.sh | bash` |
 | Disk space | Models are 5 to 30 GB | `doctor.sh` warns under 10 GB free |
 
 !!! warning "Old Claude Code versions"
@@ -129,6 +129,6 @@ bash uninstall.sh --with phone,remote   # also runs those add-ons' own uninstall
 bash uninstall.sh --all --purge         # every add-on too, and their data and config
 ```
 
-It removes `~/Desktop/Claude Local.command`, `~/.local/mlx-native-server`, `~/.local/mlx-server`, the `~/.local/bin/keepgoing` symlink and its `~/.zshrc` / `~/.bashrc` line, stops the server on port 4000 (`CCL_PORT`) only if it is this repo's `server.py`, deletes `/tmp/mlx-server.log`, and, unless you pass `--keep-models`, deletes from `~/.cache/huggingface/hub` the five models `setup.sh` can pick plus two older picks (`mlx-community/Qwen3.5-122B-A10B-4bit`, `mlx-community/Qwen3.5-4B-4bit`). Models you downloaded any other way are left alone. It leaves Homebrew, Python 3.12, the Claude Code CLI and the add-ons alone unless you pass `--with` or `--all`.
+It removes `~/Desktop/Claude Local.command`, `~/.local/mlx-native-server`, `~/.local/mlx-server`, the `~/.local/bin/keepgoing` symlink and its `~/.zshrc` / `~/.bashrc` line, stops the server on port 4000 (`CCL_PORT`) only if it is this repo's `server.py`, deletes `/tmp/mlx-server-<your user name>.log`, and, unless you pass `--keep-models`, deletes from `~/.cache/huggingface/hub` the five models `setup.sh` can pick plus two older picks (`mlx-community/Qwen3.5-122B-A10B-4bit`, `mlx-community/Qwen3.5-4B-4bit`). Models you downloaded any other way are left alone. It leaves Homebrew, Python 3.12, the Claude Code CLI and the add-ons alone unless you pass `--with` or `--all`.
 
 Next: [Quickstart](quickstart.md).

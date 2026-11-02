@@ -36,7 +36,7 @@ ccl_detect_tier() {
     "")
       local gb="${CCL_MEM_GB:-}"
       if [ -z "$gb" ]; then
-        gb=$(sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}')
+        gb=$(/usr/sbin/sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}')
       fi
       CCL_TIER="$(ccl_tier_for_mem "$gb")"
       ;;
@@ -73,8 +73,8 @@ ccl_detect_tier() {
   esac
 
   # What the server and Claude Code read. MLX_MAX_CONTEXT is the server's hard
-  # ceiling; CLAUDE_CODE_AUTO_COMPACT_WINDOW makes Claude Code compact before
-  # it gets there. Output is capped so prompt + answer stays inside the budget.
+  # ceiling: a longer prompt gets the API's "prompt is too long" 400, which makes
+  # Claude Code compact, and each answer is trimmed so prompt + answer fits.
   export MLX_MODEL="${MLX_MODEL:-$CCL_MODEL_DIR}"
   export MLX_VISION="${MLX_VISION:-1}"
   export MLX_MAX_CONTEXT="${MLX_MAX_CONTEXT:-$CCL_CONTEXT}"
@@ -85,7 +85,14 @@ ccl_detect_tier() {
   export MLX_SUPPRESS_THINKING="${MLX_SUPPRESS_THINKING:-0}"
   # Screenshots are shrunk to this longest side before the vision tower.
   export MLX_MAX_IMAGE_SIDE="${MLX_MAX_IMAGE_SIDE:-1024}"
-  export CLAUDE_CODE_AUTO_COMPACT_WINDOW="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-$CCL_CONTEXT}"
+  # Claude Code ignores an auto-compact window under 100000 (2.1.306 treats it as
+  # 100k), so a 16K value here would claim a window the model doesn't have. Only
+  # set it when the tier's context is at least that big; below it the server's
+  # ceiling above does the job.
+  if [ -z "${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}" ] && [ -n "$CCL_CONTEXT" ] \
+     && [ "$CCL_CONTEXT" -ge "$CCL_MIN_COMPACT_WINDOW" ]; then
+    export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$CCL_CONTEXT"
+  fi
   export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-$CCL_MAX_OUTPUT}"
   # Keep any single tool result to a slice of the context: a whole-file Read or
   # a long log used to land in one turn and overflow it before Claude Code
@@ -94,6 +101,9 @@ ccl_detect_tier() {
   export BASH_MAX_OUTPUT_LENGTH="${BASH_MAX_OUTPUT_LENGTH:-12000}"
   export CCL_TIER CCL_MODEL_ID CCL_MODEL_DIR CCL_MODEL_LABEL CCL_CONTEXT CCL_MAX_OUTPUT CCL_CACHE_LIMIT_GB
 }
+
+# Smallest CLAUDE_CODE_AUTO_COMPACT_WINDOW Claude Code honors.
+CCL_MIN_COMPACT_WINDOW=100000
 
 ccl_detect_tier
 
@@ -104,6 +114,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     for v in CCL_TIER CCL_MODEL_ID MLX_MODEL MLX_VISION MLX_MAX_CONTEXT MLX_CACHE_LIMIT_GB MLX_SUPPRESS_THINKING MLX_MAX_IMAGE_SIDE \
              CLAUDE_CODE_AUTO_COMPACT_WINDOW CLAUDE_CODE_MAX_OUTPUT_TOKENS \
              CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS BASH_MAX_OUTPUT_LENGTH; do
+      [ "$v" = CLAUDE_CODE_AUTO_COMPACT_WINDOW ] && [ -z "${!v}" ] && continue
       printf 'export %s=%q\n' "$v" "${!v}"
     done
   elif [ "$CCL_TIER" = "none" ]; then
@@ -112,7 +123,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     echo "Tier:     $CCL_TIER"
     echo "Model:    $CCL_MODEL_LABEL"
     echo "          $CCL_MODEL_ID"
-    echo "Context:  $CCL_CONTEXT tokens (server ceiling + Claude Code auto-compact)"
+    echo "Context:  $CCL_CONTEXT tokens (server ceiling; Claude Code compacts when it is hit)"
     echo "Download: bash scripts/download-and-import.sh small"
     echo "Launch:   double-click launchers/Small Mac.command"
   fi

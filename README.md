@@ -160,7 +160,7 @@ Claude Code's language directly, so there's **nothing in the middle**, and that'
 
 - 🍎 A Mac with **Apple Silicon** (M1 or newer)
 - 🐍 **Python 3.12** (setup installs it for you)
-- 🤖 **Claude Code**: `npm install -g @anthropic-ai/claude-code`
+- 🤖 **Claude Code**: the installer adds it if it is missing (`curl -fsSL https://claude.ai/install.sh | bash`)
 
 Setup looks at your Mac's memory and picks a model that fits:
 
@@ -245,7 +245,7 @@ With no terminal to ask on and no `--with`, no add-ons are installed.
 **Uninstall:** `bash ~/claude-code-local/uninstall.sh` (add `--with phone,remote` or `--all` to remove add-ons too, `--purge` to delete their data).
 
 > 🐛 **Asked to sign in to a Claude account?** Your `claude` is too old. Update it:
-> `npm install -g @anthropic-ai/claude-code`
+> `curl -fsSL https://claude.ai/install.sh | bash`
 
 <details>
 <summary>🛠️ Prefer to do it by hand?</summary>

@@ -121,16 +121,20 @@ http_code() {
 }
 answers() { [ "$(http_code "http://127.0.0.1:$1${2:-/}")" != "000" ]; }
 
+# sysctl lives in /usr/sbin, which a non-login shell's PATH may lack: then memory read as 0 GB and
+# the doctor recommended the 2B tier on any Mac. Call it by its full path when it is there.
+SYSCTL="$( [ -x /usr/sbin/sysctl ] && echo /usr/sbin/sysctl || echo sysctl )"
+
 total_ram_gb() {
   if [ "$OS" = Darwin ]; then
-    sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}'
+    "$SYSCTL" -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}'
   else
     awk '/^MemTotal:/ {print int(($2+524288)/1048576)}' /proc/meminfo 2>/dev/null
   fi
 }
 
 cpu_name() {
-  if [ "$OS" = Darwin ]; then sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Apple Silicon"
+  if [ "$OS" = Darwin ]; then "$SYSCTL" -n machdep.cpu.brand_string 2>/dev/null || echo "Apple Silicon"
   else awk -F: '/model name/ {gsub(/^ +/,"",$2); print $2; exit}' /proc/cpuinfo 2>/dev/null; fi
 }
 
@@ -301,9 +305,20 @@ check_models_linux() {
     record pass models "model files present ($(json_get "$cfg" model_name), $(json_get "$cfg" quant))"
   elif [ -f "$gguf" ]; then record warn models "model present but its vision projector file is missing (re-run the installer)"
   else record fail models "model file missing (re-run the installer to download it again)"; fi
-  if [ -x "$bin" ]; then
+  if [ ! -x "$bin" ]; then record fail llama "llama-server binary missing (re-run the installer)"; return; fi
+  # Present is not enough: on stock Ubuntu 24.04 it could not start because libgomp.so.1 was
+  # missing. ldd lists every shared library it can't find as "not found".
+  local missing=""
+  if have ldd; then
+    missing="$(ldd "$bin" 2>/dev/null | awk '/not found/ {print $1}' | sort -u | tr '\n' ' ' | sed 's/ $//')"
+  fi
+  if [ -n "$missing" ]; then
+    local hint=" (install the system package that provides it)"
+    case "$missing" in *libgomp*) hint=" (Debian/Ubuntu: sudo apt-get install libgomp1)" ;; esac
+    record fail llama "llama-server can't start, missing libraries: $missing$hint"
+  else
     record pass llama "llama-server present (build ${tag:-unknown}, $(json_get "$cfg" accel))"
-  else record fail llama "llama-server binary missing (re-run the installer)"; fi
+  fi
 }
 
 check_core() {
