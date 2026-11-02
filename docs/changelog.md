@@ -10,7 +10,11 @@ description: >-
 
 Built from the git history and the three tags in the repository. Pull request numbers link to GitHub. Full release notes are on the [releases page](https://github.com/nicedreamzapp/claude-code-local/releases).
 
-## Unreleased (on `main` since v0.3.0)
+## v1.0.0 (unreleased, branch `v1.0-launch`)
+
+"Hit your limit? Keep going." Pulls v0.4.0 (parser fixes), v0.4.1 (limit-handoff security fix), v0.5.0 (Linux and Windows), v0.6.0 (the full kit) and v0.7.0 (small Macs) into one release. The version now lives in `VERSION` at the repo root and shows in the server banner, `/health`, the installers and the doctor report. Notes for each of those releases are on the [releases page](https://github.com/nicedreamzapp/claude-code-local/releases).
+
+## Earlier work on `main` after v0.3.0
 
 ### Server fixes (2026-10-09)
 

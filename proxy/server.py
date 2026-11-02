@@ -29,6 +29,10 @@ import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
+# Release version. Keep in step with the VERSION file at the repo root
+# (tests/test_version.py checks they match).
+__version__ = "1.0.0"
+
 # MLX is the Mac inference backend. Guard the import so this module can also be
 # imported on Linux/Windows (which have no MLX) purely to reuse the pure
 # Anthropic<->tool-call translation helpers below — portable/portable_server.py
@@ -2697,7 +2701,7 @@ class AnthropicHandler(BaseHTTPRequestHandler):
             # The memory block is here so `curl :4000/health` answers "how close
             # to the edge is this box?" without attaching to the process.
             # mx_peak_gb is the honest one; see mem_snapshot on why not rss.
-            payload = {"status": "ok", "model": MODEL_PATH,
+            payload = {"status": "ok", "version": __version__, "model": MODEL_PATH,
                        "prefill_size": PREFILL_SIZE, "vision": VISION,
                        "max_context": MAX_CONTEXT}
             payload.update(mem_snapshot())
@@ -2714,6 +2718,7 @@ if __name__ == "__main__":
     print("║  Claude Code → MLX → Apple Silicon (direct)     ║")
     print("║  Tool use: enabled (Anthropic ↔ Llama native)   ║")
     print("║  Prompt caching: enabled (KV reuse)             ║")
+    print(f"║  claude-code-local v{__version__:<28}║")
     print("╚══════════════════════════════════════════════════╝")
     print()
 

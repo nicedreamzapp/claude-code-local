@@ -452,12 +452,13 @@ print_report() {
   else osname="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Linux}")"; fi
   kernel="$(uname -r)"
   commit="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  ccl_ver="$(head -n1 "$REPO_DIR/VERSION" 2>/dev/null || echo unknown)"
   failed="$(echo "$RESULTS" | awk -F'|' '$1=="fail" {sub(/^fail\|[^|]*\|/,""); print "  - " $0}')"
   warned="$(echo "$RESULTS" | awk -F'|' '$1=="warn" {sub(/^warn\|[^|]*\|/,""); print "  - " $0}')"
   passed="$(echo "$RESULTS" | awk -F'|' '$1=="pass" {print $2}' | tr '\n' ' ')"
   skipped="$(echo "$RESULTS" | awk -F'|' '$1=="skip" {print $2}' | tr '\n' ' ')"
   {
-    echo "claude-code-local doctor report (doctor v$DOCTOR_VERSION, repo $commit)"
+    echo "claude-code-local doctor report (doctor v$DOCTOR_VERSION, claude-code-local $ccl_ver, repo $commit)"
     echo "OS:        $osname ($ARCH, kernel $kernel)"
     echo "Chip/GPU:  $(gpu_name)"
     echo "RAM:       $(total_ram_gb) GB"

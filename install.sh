@@ -33,7 +33,7 @@ OS="$(uname -s)"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
-echo "║     Claude Code Local — Installer                ║"
+echo "║     Claude Code Local v1.0.0 — Installer         ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
 

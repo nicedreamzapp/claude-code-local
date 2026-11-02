@@ -66,7 +66,7 @@ function Install-ClaudeCodeLocal {
 
   Write-Host ""
   Write-Host "=============================================="
-  Write-Host "    Claude Code Local - Windows installer"
+  Write-Host "    Claude Code Local v1.0.0 - Windows installer"
   Write-Host "=============================================="
   Write-Host ""
 

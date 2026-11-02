@@ -1,5 +1,30 @@
 <div align="center">
 
+<!-- TODO(v1.0): assets/demo.gif is being re-recorded as the 60-second launch demo
+     (wifi off on screen: hit the limit, type exit, keep going locally).
+     Keep this path; swap the file and update the alt text and caption when it lands. -->
+<img src="assets/demo.gif" width="860" alt="Claude Code running on a local model on a Mac, no cloud">
+<br><em>A real session, unedited. The AI answering is running on the laptop.</em>
+
+# Hit your limit? Keep going.
+
+**Claude Code, running on your own computer when your Claude usage runs out. Same tools, same project, no API key.**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash
+```
+
+Mac and Linux. Windows is [one PowerShell line](#-on-linux-or-a-windows-pc). On a Mac, type `exit` in Claude Code, then `keep going`, and the same conversation carries on.
+
+**[Agent-12](https://nicedreamzapp.github.io/agent12/) score** for the model setup picks on a 96 GB Mac, Qwen 3.8 27B: **12/12 easy, 7/8 hard**.
+<sub>Scored in Agent-12's own harness, not inside Claude Code. [How the models compare](#-pick-your-ai)</sub>
+
+</div>
+
+<br>
+
+<div align="center">
+
 # 🧠⚡ Claude Code Local
 
 ### Claude Code, running on your own Mac. No cloud. No API key. No waiting.
@@ -29,11 +54,6 @@ Ran out of Claude usage or hit a rate limit mid-task? [Start here](#-hit-your-cl
 it takes one command to keep working on a local model.
 
 Other things I built that go with it are in [the local-first family](#-the-local-first-family).
-
-<p align="center">
-  <img src="assets/demo.gif" width="860" alt="Claude Code editing a file with Gemma 4 31B running locally on a Mac, no cloud">
-  <br><em>A real session, unedited. Claude Code reads and edits the file, and the AI answering is running on the laptop.</em>
-</p>
 
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-banner.svg" width="100%" alt="01. What I built. The glue that makes local models usable inside Claude Code"></picture>
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-r1.svg" width="100%" alt="The MLX server. Speaks the Anthropic Messages API with streaming and repairs garbled tool JSON. The Native Engine. A one-file terminal coding agent with a short fixed system prompt. keepgoing. Resumes your last Claude Code conversation on a free cloud or local model."></picture>

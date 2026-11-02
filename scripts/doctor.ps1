@@ -283,8 +283,13 @@ if ($Report) {
   if (-not $skipped) { $skipped = "(none)" }
   $ver = "claude $(if ($ClaudeVer) { $ClaudeVer } else { 'none' }), python $(if ($PyVer) { $PyVer } else { 'none' })"
   if ($LlamaTag) { $ver += ", llama.cpp $LlamaTag" }
+  $cclVer = "unknown"
+  if ($PSScriptRoot) {
+    $vf = Join-Path (Split-Path -Parent $PSScriptRoot) "VERSION"
+    if (Test-Path $vf) { $cclVer = (Get-Content $vf -TotalCount 1).Trim() }
+  }
   $block = @(
-    "claude-code-local doctor report (doctor v$DoctorVersion, Windows)",
+    "claude-code-local doctor report (doctor v$DoctorVersion, claude-code-local $cclVer, Windows)",
     "OS:        $osCaption $osVersion",
     "Chip/GPU:  $cpu / $gpu",
     "RAM:       $ramGb GB",
