@@ -242,6 +242,7 @@ def count_tokens(body):
 # ─── Generation (reuses the Mac server's parser + response builder) ───────────
 
 def generate_response(body):
+    body = S.hoist_system_messages(body)  # see server.hoist_system_messages
     if BROWSER_MODE:
         body = S.optimize_for_browser(body)
     elif CODE_MODE_ENABLED and S.looks_like_code_session(body):

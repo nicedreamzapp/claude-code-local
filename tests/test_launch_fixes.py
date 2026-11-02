@@ -20,7 +20,7 @@ import time
 
 import pytest
 
-from conftest import ROOT, load_module
+from conftest import ROOT, load_module, server
 
 keepgoing = load_module("keepgoing", ROOT / "bin" / "keepgoing.py")
 router = load_module("router", ROOT / "smart-router" / "router.py")
@@ -394,3 +394,55 @@ def test_port_stops_only_target_listeners():
         for line in path.read_text().splitlines():
             if "lsof" in line and "kill" in line and "#" not in line.split("lsof")[0]:
                 assert "-sTCP:LISTEN" in line, f"{path.name}: {line.strip()}"
+
+
+# ─── Claude Code's mid-conversation system message (unrecognized model names) ─
+
+ENV_TEXT = ("# Environment\nYou have been invoked in the following environment: \n"
+            " - Primary working directory: /tmp/tipcalc\n - Platform: darwin\n\n"
+            "You are powered by the model local:Qwen3.5-4B-bf16.")
+
+
+def _body_like_claude_code():
+    """Shape Claude Code 2.1.306 sends for a "local:" model (captured from a real request)."""
+    return {"model": "local:Qwen3.5-4B-bf16", "max_tokens": 32000,
+            "system": [{"type": "text", "text": "You are Claude Code."}],
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "say hi"}]},
+                         {"role": "system", "content": [{"type": "text", "text": ENV_TEXT}]}],
+            "tools": [{"name": "Bash", "description": "run",
+                       "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}}}]}
+
+
+def test_system_messages_are_hoisted_into_the_system_prompt():
+    body = _body_like_claude_code()
+    out = server.hoist_system_messages(body)
+    assert [m["role"] for m in out["messages"]] == ["user"]
+    assert out["system"][-1]["text"] == ENV_TEXT
+    assert [m["role"] for m in body["messages"]] == ["user", "system"]  # input untouched
+    s = server.hoist_system_messages({"system": "base", "messages": [
+        {"role": "system", "content": "more"}, {"role": "user", "content": "x"}]})
+    assert s["system"] == "base\n\nmore" and [m["role"] for m in s["messages"]] == ["user"]
+    plain = {"messages": [{"role": "user", "content": "x"}]}
+    assert server.hoist_system_messages(plain) is plain
+
+
+def test_converted_prompt_has_one_leading_system_message():
+    msgs = server.convert_messages(_body_like_claude_code(), tool_ids=True)
+    roles = [m["role"] for m in msgs]
+    assert roles[0] == "system" and roles.count("system") == 1
+    assert ENV_TEXT in msgs[0]["content"]
+
+
+def test_code_mode_finds_the_working_directory_in_the_hoisted_message(fake_model, monkeypatch):
+    seen = []
+    real = server.optimize_for_code
+
+    def spy(body):
+        seen.append(server.working_directory(body.get("system")))
+        return real(body)
+    monkeypatch.setattr(server, "optimize_for_code", spy)
+    body = _body_like_claude_code()
+    body["tools"] = [dict(body["tools"][0], name=n) for n in ("Bash", "Read", "Edit", "Write")]
+    fake_model.outputs = ["hi"]
+    server.generate_response(body)
+    assert seen == ["/tmp/tipcalc"]

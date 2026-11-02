@@ -1271,6 +1271,39 @@ def template_messages(messages, tok=None):
     return [_plain(m) for m in messages]
 
 
+def _text_of(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b.get("text", "") for b in content
+                         if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+def hoist_system_messages(body):
+    """Move role "system" entries out of messages and into the system prompt.
+
+    Claude Code 2.1.306 sends one for a model name it doesn't recognize (the
+    "local:<model>" names keep going uses): its environment section (working
+    directory, platform) arrives as a {"role": "system"} message after the first
+    user turn instead of inside `system`. Chat templates such as Qwen 3.5's
+    refuse a system message anywhere but first ("System message must be at the
+    beginning"), so the prompt fell back to plain text and the model rambled
+    without stopping. Returns a new body; the original is left alone."""
+    msgs = body.get("messages") or []
+    extra = [_text_of(m.get("content")) for m in msgs if m.get("role") == "system"]
+    if not extra:
+        return body
+    body = dict(body)
+    body["messages"] = [m for m in msgs if m.get("role") != "system"]
+    system = body.get("system")
+    if isinstance(system, list):
+        body["system"] = list(system) + [{"type": "text", "text": t} for t in extra if t]
+    else:
+        body["system"] = "\n\n".join(t for t in [system or ""] + extra if t)
+    return body
+
+
 def convert_messages(body, vision=False, tool_ids=False):
     """Convert Anthropic Messages format to MLX chat messages.
 
@@ -1282,6 +1315,7 @@ def convert_messages(body, vision=False, tool_ids=False):
       content items (see collect_images); everywhere else, and with
       vision=False, an image becomes a short "[image omitted]" marker
     """
+    body = hoist_system_messages(body)
     messages = []
     tool_names = {}  # tool_use id -> tool name, for the structured tool messages
     body_messages = body.get("messages", [])
@@ -2003,6 +2037,10 @@ def generate_response(body, on_start=None, on_text=None):
     on_text fires with each thinking-filtered text chunk as it is generated.
     """
     global _first_request
+
+    # Before any mode looks at the system prompt: code mode finds the working
+    # directory there, and the template must see a single leading system message.
+    body = hoist_system_messages(body)
 
     # In browser mode, strip Claude Code bloat before inference.
     # Otherwise, auto-detect Claude Code coding sessions and apply code mode.
