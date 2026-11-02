@@ -87,8 +87,13 @@ resolve_mlx_model() {
 # the listener on that one port whose command line is our server.py. A server on another port
 # (another user's, a demo, a benchmark) is never touched, and neither is a non-server process.
 _mlx_server_pids() {
-  local port="${1:-4000}" pid
-  for pid in $(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null); do
+  local port="${1:-4000}" pid listeners
+  listeners="$(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null)"
+  # Some Linux boxes (CI runners, containers) give lsof nothing; ss reads the same sockets.
+  if [ -z "$listeners" ] && command -v ss >/dev/null 2>&1; then
+    listeners="$(ss -Hltnp "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)"
+  fi
+  for pid in $listeners; do
     if ps -o command= -p "$pid" 2>/dev/null | grep -qE "mlx-native-server/server\.py|proxy/server\.py"; then
       printf '%s\n' "$pid"
     fi
