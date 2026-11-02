@@ -1,10 +1,10 @@
 <div align="center">
 
-<!-- TODO(v1.0): assets/demo.gif is being re-recorded as the 60-second launch demo
-     (wifi off on screen: hit the limit, type exit, keep going locally).
-     Keep this path; swap the file and update the alt text and caption when it lands. -->
-<img src="assets/demo.gif" width="860" alt="Claude Code running on a local model on a Mac, no cloud">
-<br><em>A real session, unedited. The AI answering is running on the laptop.</em>
+<a href="https://www.youtube.com/watch?v=XNSdQtlTwWo"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/587a5449e6f497cd51fc9e1cbc0ce5ee05237368/assets/readme/promo-video-thumb.jpg" width="640" alt="Watch the video: Claude Code Local, an AI that runs on your own computer, free, private and offline"></a>
+
+<!-- Voiced launch demo goes here once it is on YouTube (58 s: hit the limit, type exit, keep going locally):
+<a href="https://www.youtube.com/watch?v=VIDEO_ID"><img src="https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg" width="640" alt="Watch the demo: hit your Claude Code limit, type exit, keep going on a local model"></a>
+-->
 
 # Hit your limit? Keep going.
 
@@ -43,8 +43,6 @@ Mac and Linux. Windows is [one PowerShell line](#-on-linux-or-a-windows-pc). On 
 <a href="#-use-it-with-trinidad-head"><img src="https://img.shields.io/badge/🌊_Best_with-Trinidad_Head-a855f7?style=for-the-badge" alt="Best with Trinidad Head"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/📜_License-MIT-yellow?style=for-the-badge" alt="MIT"></a>
 <a href="https://discord.gg/ZdSqgAxUW"><img src="https://img.shields.io/discord/1497121921580404818?label=Discord&logo=discord&color=5865F2&style=for-the-badge" alt="Discord"></a>
-
-<a href="https://www.youtube.com/watch?v=XNSdQtlTwWo"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/587a5449e6f497cd51fc9e1cbc0ce5ee05237368/assets/readme/promo-video-thumb.jpg" width="640" alt="Watch the video: Claude Code Local, an AI that runs on your own computer, free, private and offline"></a>
 
 </div>
 
