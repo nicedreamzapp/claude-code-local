@@ -36,6 +36,8 @@ exclude_docs: |
 
 theme:
   name: material
+  # Head additions (page titles, FAQPage JSON-LD) live in overrides/main.html.
+  custom_dir: overrides
   language: en
   icon:
     logo: material/console
@@ -71,7 +73,10 @@ plugins:
   - search
   # Generates an Open Graph / Twitter card image for every page.
   # Needs Cairo and Pillow (installed by mkdocs-material[imaging]).
-  - social
+  - social:
+      # Same as the built-in default layout, with " | " between page and site name.
+      cards_layout_dir: layouts
+      cards_layout: ccl
 
 # mkdocs writes sitemap.xml (and sitemap.xml.gz) automatically when site_url
 # is set. Submit that URL in Google Search Console after the first deploy.
@@ -126,10 +131,12 @@ nav:
   - Hit your usage limit?: usage-limit.md
   - How-to guides:
       - Claude Code offline on a Mac: claude-code-offline-mac.md
+      - Claude Code on Apple Silicon with MLX: claude-code-apple-silicon-mlx.md
       - Claude Code on Linux: claude-code-linux-local-model.md
       - Claude Code on Windows: claude-code-windows-local-model.md
       - Claude Code without an API key: claude-code-without-api-key.md
       - Best model for a 16 GB or 8 GB Mac: best-local-model-small-mac.md
+      - Which local model to run: which-local-model-claude-code.md
   - Small Macs (8 / 16 GB): SMALL-MACS.md
   - Benchmark vs Ollama: vs-ollama.md
   - Configuration: configuration.md

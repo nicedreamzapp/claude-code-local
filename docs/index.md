@@ -29,6 +29,21 @@ Hit your Claude Code usage limit or ran out of credits? [Keep working on a local
 
 On Linux and Windows the same install runs the model with llama.cpp instead of MLX: see [Linux](claude-code-linux-local-model.md) and [Windows](claude-code-windows-local-model.md). Intel Macs are not supported.
 
+## Guides
+
+One page for each thing people come here to do:
+
+| Guide | For when |
+|---|---|
+| [Hit your usage limit? Keep going](usage-limit.md) | Claude Code says 5-hour limit, weekly limit, or credit balance too low |
+| [Claude Code offline on a Mac](claude-code-offline-mac.md) | You need to work with no internet connection |
+| [Claude Code without an API key](claude-code-without-api-key.md) | You want it free, with no key and no subscription |
+| [Claude Code on Apple Silicon with MLX](claude-code-apple-silicon-mlx.md) | You have an M1 or newer Mac |
+| [Best model for a 16 GB or 8 GB Mac](best-local-model-small-mac.md) | Your Mac has less than 32 GB of memory |
+| [Which local model to run](which-local-model-claude-code.md) | You want the model list by memory and GPU |
+| [Claude Code on Windows](claude-code-windows-local-model.md) | You are on a Windows PC |
+| [Claude Code on Linux](claude-code-linux-local-model.md) | You are on Linux |
+
 ## What is in the repository
 
 | Piece | What it does |

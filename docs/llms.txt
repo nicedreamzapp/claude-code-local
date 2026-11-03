@@ -1,0 +1,47 @@
+# Claude Code Local
+
+> Run Claude Code against an open model on your own machine, with no cloud model and no API key. On an Apple Silicon Mac a small Python server (proxy/server.py) runs the model with Apple's MLX and answers Claude Code on http://localhost:4000 in Anthropic's Messages API format. On Linux and Windows the same install runs the model with llama.cpp. When you hit a Claude Code usage limit, type exit, then keep going, and the same conversation carries on with a local or free cloud model.
+
+Install on a Mac or Linux: `curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash`
+
+Install on Windows (PowerShell): `irm https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.ps1 | iex`
+
+Setup reads the machine's memory and graphics hardware and picks a model that fits. On a Mac: Qwen 3.5 2B 8-bit under 16 GB, Qwen 3.5 4B bf16 for 16 to 31 GB, Gemma 4 12B 4-bit for 32 to 63 GB, Gemma 4 31B 4-bit for 64 to 95 GB, Qwen 3.8 27B 8-bit for 96 GB and up. MIT licensed. Intel Macs are not supported.
+
+## Guides
+
+- [Hit your Claude Code usage limit? Keep going](https://nicedreamzapp.github.io/claude-code-local/usage-limit/): switch to a local model in one command and keep the same conversation
+- [Run Claude Code offline on a Mac](https://nicedreamzapp.github.io/claude-code-local/claude-code-offline-mac/): install once, switch off background traffic, check with lsof
+- [Use Claude Code without an API key](https://nicedreamzapp.github.io/claude-code-local/claude-code-without-api-key/): free, no key and no subscription
+- [Claude Code on Apple Silicon with MLX](https://nicedreamzapp.github.io/claude-code-local/claude-code-apple-silicon-mlx/): M1 or newer, measured speeds, memory settings
+- [Best model for a 16 GB or 8 GB Mac](https://nicedreamzapp.github.io/claude-code-local/best-local-model-small-mac/): Qwen 3.5 4B bf16 and Qwen 3.5 2B 8-bit
+- [Which local model to run](https://nicedreamzapp.github.io/claude-code-local/which-local-model-claude-code/): the model for each memory size and GPU
+- [Claude Code on Windows](https://nicedreamzapp.github.io/claude-code-local/claude-code-windows-local-model/): llama.cpp, one PowerShell line
+- [Claude Code on Linux](https://nicedreamzapp.github.io/claude-code-local/claude-code-linux-local-model/): llama.cpp on NVIDIA, AMD/Vulkan or CPU
+
+## Docs
+
+- [Home](https://nicedreamzapp.github.io/claude-code-local/): what it is and what is in the repository
+- [Install](https://nicedreamzapp.github.io/claude-code-local/install/): requirements, what setup.sh changes, uninstall
+- [Quickstart](https://nicedreamzapp.github.io/claude-code-local/quickstart/): start it, check it, switch models
+- [Configuration](https://nicedreamzapp.github.io/claude-code-local/configuration/): every environment variable and launcher
+- [How it works](https://nicedreamzapp.github.io/claude-code-local/how-it-works/): the request path, tool-call parsing, cache reuse
+- [Automatic keep going](https://nicedreamzapp.github.io/claude-code-local/AUTO-HANDOFF/): hand off to a local model by itself at the limit
+- [Troubleshooting](https://nicedreamzapp.github.io/claude-code-local/troubleshooting/)
+- [FAQ](https://nicedreamzapp.github.io/claude-code-local/faq/)
+
+## Source
+
+- [GitHub repository](https://github.com/nicedreamzapp/claude-code-local)
+- [README](https://github.com/nicedreamzapp/claude-code-local/blob/main/README.md)
+- [install.sh](https://github.com/nicedreamzapp/claude-code-local/blob/main/install.sh): Mac and Linux installer
+- [install.ps1](https://github.com/nicedreamzapp/claude-code-local/blob/main/install.ps1): Windows installer
+- [proxy/server.py](https://github.com/nicedreamzapp/claude-code-local/blob/main/proxy/server.py): the MLX server
+
+## Optional
+
+- [Small Macs (8 / 16 GB)](https://nicedreamzapp.github.io/claude-code-local/SMALL-MACS/): measured memory, speed and limits
+- [Benchmark vs Ollama](https://nicedreamzapp.github.io/claude-code-local/vs-ollama/): the same 10 coding tasks on both
+- [Full technical guide](https://github.com/nicedreamzapp/claude-code-local/blob/main/docs/FULL-GUIDE.md)
+- [Benchmarks](https://github.com/nicedreamzapp/claude-code-local/blob/main/docs/BENCHMARKS.md)
+- [Changelog](https://nicedreamzapp.github.io/claude-code-local/changelog/)

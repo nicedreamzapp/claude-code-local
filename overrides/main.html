@@ -1,0 +1,27 @@
+{#- Site-wide head additions for the docs site.
+    1. Page titles use " | " between the page and the site name.
+    2. Pages with a `faq:` list in their front matter get FAQPage JSON-LD.
+       Each entry is {q: question, a: answer}; keep both identical to the
+       questions and answers shown on the page. -#}
+{% extends "base.html" %}
+
+{% block htmltitle %}
+  {% if page.meta and page.meta.title %}
+    <title>{{ page.meta.title }} | {{ config.site_name }}</title>
+  {% elif page.title and not page.is_homepage %}
+    <title>{{ page.title | striptags }} | {{ config.site_name }}</title>
+  {% else %}
+    <title>{{ config.site_name }}</title>
+  {% endif %}
+{% endblock %}
+
+{% block extrahead %}
+  {{ super() }}
+  {% if page.meta and page.meta.faq %}
+    {% set ns = namespace(items=[]) %}
+    {% for item in page.meta.faq %}
+      {% set ns.items = ns.items + [{"@type": "Question", "name": item.q, "acceptedAnswer": {"@type": "Answer", "text": item.a}}] %}
+    {% endfor %}
+    <script type="application/ld+json">{{ {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": ns.items} | tojson }}</script>
+  {% endif %}
+{% endblock %}

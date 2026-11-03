@@ -4,6 +4,32 @@ description: >-
   Hit the Claude Code 5-hour limit, the weekly limit, a rate limit, or ran out of
   credits? Switch Claude Code to a free local model on your Mac, Linux or Windows
   PC in one command, keep the same conversation, and switch back when it resets.
+faq:
+  - q: When does the Claude Code usage limit reset?
+    a: >-
+      The message shows the time. Run /usage inside Claude Code to see each
+      limit and its reset time. Plans have a 5-hour session limit and a
+      separate weekly limit, so the weekly one can mean days.
+  - q: Do I need an API key or more credits for the local model?
+    a: >-
+      No. The launchers send sk-local as the key and the server never checks
+      it. You only need the Claude Code CLI, which is free to install.
+  - q: What happens if Claude is down?
+    a: >-
+      The model runs on your machine, so an Anthropic outage doesn't stop it.
+      Claude Code itself still makes some background calls to Anthropic at
+      startup unless you switch them off; the Quickstart lists the environment
+      variables.
+  - q: Is a local model as good as Claude?
+    a: >-
+      No. Big models on a 64 GB or 96 GB Mac handle real multi-step work. Small
+      ones on an 8 or 16 GB machine do best with one clear step at a time. It
+      keeps you moving until your limit resets.
+  - q: Does my code leave my computer?
+    a: >-
+      With a local model, no: the server only listens on 127.0.0.1. The one
+      exception is picking a free cloud model in keep going, which sends that
+      conversation to OpenRouter.
 ---
 
 # Claude Code usage limit reached? Keep working on a local model
