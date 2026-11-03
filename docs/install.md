@@ -65,8 +65,10 @@ bash setup.sh
 | 96 GB and up | `lmstudio-community/Qwen3.8-27B-MLX-8bit` | Qwen 3.8 27B, 8-bit (~29 GB) |
 | 64 to 95 GB | `divinetribe/gemma-4-31b-it-abliterated-4bit-mlx` | Gemma 4 31B Abliterated, 4-bit (~18 GB) |
 | 32 to 63 GB | `divinetribe/gemma-4-12B-it-abliterated-4bit-mlx-text` | Gemma 4 12B Abliterated, 4-bit (~11 GB) |
-| 16 to 31 GB | `divinetribe/Hermes-4-14B-abliterated-4bit-mlx` | Hermes 4 14B Abliterated, 4-bit (~8 GB) |
-| Under 16 GB | `mlx-community/gemma-4-e4b-it-4bit` | Gemma 4 E4B, 4-bit (~5 GB, may struggle with tool calls) |
+| 16 to 31 GB | `mlx-community/Qwen3.5-4B-bf16` | Qwen 3.5 4B, bf16, vision + tools (~9 GB) |
+| Under 16 GB | `mlx-community/Qwen3.5-2B-MLX-8bit` | Qwen 3.5 2B, 8-bit, vision + tools (~2.7 GB) |
+
+The two small-Mac rows come from `scripts/mac-tier.sh`; see [Best model for a 16 GB or 8 GB Mac](best-local-model-small-mac.md). On Linux or Windows, see [Linux](claude-code-linux-local-model.md) or [Windows](claude-code-windows-local-model.md).
 
 !!! note "About “abliterated” models"
     Several defaults are abliterated builds, which have their built-in refusals turned down. The README is clear that this is not a general upgrade and that each model's own license still applies. Original releases from Google, Qwen and Nous Research are linked on the [Credits](project-credits.md#models) page if you would rather run those.

@@ -14,6 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/mai
 
 Mac and Linux. Windows is [one PowerShell line](#-on-linux-or-a-windows-pc). On a Mac, Linux or Windows, type `exit` in Claude Code, then `keep going`, and the same conversation carries on.
 
+**How-to guides and docs: [nicedreamzapp.github.io/claude-code-local](https://nicedreamzapp.github.io/claude-code-local/)**
+
 **[Agent-12](https://nicedreamzapp.github.io/agent12/) score** for the model setup picks on a 96 GB Mac, Qwen 3.8 27B: **12/12 easy, 7/8 hard**.
 <sub>Scored in Agent-12's own harness, not inside Claude Code. [How the models compare](#-pick-your-ai)</sub>
 
@@ -320,7 +322,7 @@ It picks the strongest vision model that fits and tells you why, for example:
 | AMD or Vulkan GPU | the largest that fits in VRAM |
 | No GPU (CPU only) | a 4B or 9B vision model, sized to your RAM |
 
-Want a specific one? `CCL_MODEL_ID=gemma-4-12b claude-local`. The catalog lives in
+Want a specific one? `CCL_MODEL_ID=gemma-4-12b python3 ~/claude-code-local/portable/ccl.py install`, then `claude-local`. The catalog lives in
 [`portable/catalog.json`](portable/catalog.json).
 
 ### What it depends on (and how we'd replace it)
