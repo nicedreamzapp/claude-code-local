@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://nicedreamzapp.github.io/claude-code-local/sitemap.xml

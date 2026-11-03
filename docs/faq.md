@@ -34,11 +34,7 @@ It depends on the Mac and the model. Numbers in the repo were measured on an M5 
 
 ## Does it run on Windows, Linux or an Intel Mac?
 
-No. It uses Apple's MLX, which needs Apple Silicon, and the installer stops on anything else ([#53](https://github.com/nicedreamzapp/claude-code-local/issues/53)). The README lists other ways to run Claude Code against models you choose:
-
-- [Ollama](https://docs.ollama.com/api/anthropic-compatibility) speaks the Anthropic Messages API natively since v0.14 and is not limited to Macs.
-- [claude-code-router](https://github.com/musistudio/claude-code-router) routes Claude Code across many providers, local or cloud.
-- [claude-code-proxy](https://github.com/1rgs/claude-code-proxy) translates Claude Code's requests to OpenAI-style APIs.
+Linux and Windows, yes. Since v0.5.0 the installer looks at your hardware (NVIDIA, AMD/Vulkan or CPU), downloads a pinned llama.cpp build and a vision model that fits, and starts Claude Code against it. See [Linux](claude-code-linux-local-model.md) and [Windows](claude-code-windows-local-model.md). Intel Macs are not supported: the Mac path uses Apple's MLX, which needs Apple Silicon, and the installer stops on an Intel Mac ([#53](https://github.com/nicedreamzapp/claude-code-local/issues/53)).
 
 ## How is this different from Ollama?
 

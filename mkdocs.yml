@@ -8,7 +8,6 @@ site_description: >-
   A single-file Python server speaks the Anthropic Messages API, so Claude Code
   works with no cloud model and no API key.
 site_author: Matt Macosko
-# Placeholder until the GitHub Pages URL is confirmed.
 site_url: https://nicedreamzapp.github.io/claude-code-local/
 repo_url: https://github.com/nicedreamzapp/claude-code-local
 repo_name: nicedreamzapp/claude-code-local
@@ -125,6 +124,12 @@ nav:
   - Install: install.md
   - Quickstart: quickstart.md
   - Hit your usage limit?: usage-limit.md
+  - How-to guides:
+      - Claude Code offline on a Mac: claude-code-offline-mac.md
+      - Claude Code on Linux: claude-code-linux-local-model.md
+      - Claude Code on Windows: claude-code-windows-local-model.md
+      - Claude Code without an API key: claude-code-without-api-key.md
+      - Best model for a 16 GB or 8 GB Mac: best-local-model-small-mac.md
   - Small Macs (8 / 16 GB): SMALL-MACS.md
   - Benchmark vs Ollama: vs-ollama.md
   - Configuration: configuration.md

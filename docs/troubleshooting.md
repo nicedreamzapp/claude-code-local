@@ -117,7 +117,7 @@ MLX_MODEL=/path/to/your/mlx-model bash launchers/"Gemma 4 Code.command"
 
 ## The installer refuses to run
 
-- `✗ This only runs on macOS (Apple Silicon).` or `✗ This needs Apple Silicon (M1 or newer).` Windows, Linux and Intel Macs are not supported ([#53](https://github.com/nicedreamzapp/claude-code-local/issues/53)). See the [FAQ](faq.md#does-it-run-on-windows-linux-or-an-intel-mac).
+- `✗ This only runs on macOS (Apple Silicon).` or `✗ This needs Apple Silicon (M1 or newer).` Intel Macs are not supported ([#53](https://github.com/nicedreamzapp/claude-code-local/issues/53)). On Linux the same `install.sh` works; on Windows use `install.ps1`. See the [FAQ](faq.md#does-it-run-on-windows-linux-or-an-intel-mac).
 - `✗ git not found.` Run `xcode-select --install`.
 - `✗ ~/claude-code-local already exists and is not a git checkout.` Move that folder or set `CCL_DIR=~/somewhere-else`.
 

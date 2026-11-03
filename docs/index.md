@@ -24,10 +24,10 @@ Hit your Claude Code usage limit or ran out of credits? [Keep working on a local
 
 - You use **Claude Code** and want to keep working when you hit your usage limit, without a second subscription.
 - You need code to **stay on your machine**: no model call leaves the Mac, and the launchers can switch off Claude Code's own background traffic.
-- You have an **Apple Silicon Mac** (M1 or newer). The installer refuses to run anywhere else.
+- You have an **Apple Silicon Mac** (M1 or newer), or a Linux or Windows PC.
 - You want to try **open models** (Gemma 4, Qwen 3.8, Hermes 4 and others) inside the agent you already know.
 
-It is not for Windows, Linux or Intel Macs. See the [FAQ](faq.md#does-it-run-on-windows-linux-or-an-intel-mac) for alternatives.
+On Linux and Windows the same install runs the model with llama.cpp instead of MLX: see [Linux](claude-code-linux-local-model.md) and [Windows](claude-code-windows-local-model.md). Intel Macs are not supported.
 
 ## What is in the repository
 
