@@ -2,9 +2,7 @@
 
 <a href="https://www.youtube.com/watch?v=XNSdQtlTwWo"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/587a5449e6f497cd51fc9e1cbc0ce5ee05237368/assets/readme/promo-video-thumb.jpg" width="640" alt="Watch the video: Claude Code Local, an AI that runs on your own computer, free, private and offline"></a>
 
-<!-- Voiced launch demo goes here once it is on YouTube (58 s: hit the limit, type exit, keep going locally):
-<a href="https://www.youtube.com/watch?v=VIDEO_ID"><img src="https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg" width="640" alt="Watch the demo: hit your Claude Code limit, type exit, keep going on a local model"></a>
--->
+<a href="https://www.youtube.com/watch?v=a9vtBSl_j_o"><img src="https://img.youtube.com/vi/a9vtBSl_j_o/hqdefault.jpg" width="640" alt="Watch the demo: hit your Claude Code limit, type exit, keep going on a local model"></a>
 
 # Hit your limit? Keep going.
 
