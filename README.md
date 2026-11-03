@@ -4,7 +4,7 @@
 
 <a href="https://www.youtube.com/watch?v=a9vtBSl_j_o"><img src="https://img.youtube.com/vi/a9vtBSl_j_o/hqdefault.jpg" width="640" alt="Watch the demo: hit your Claude Code limit, type exit, keep going on a local model"></a>
 
-# Hit your limit? Keep going.
+# Claude Code Local: hit your limit? Keep going.
 
 **Claude Code, running on your own computer when your Claude usage runs out. Same tools, same project, no API key.**
 
