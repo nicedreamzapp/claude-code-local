@@ -10,6 +10,8 @@ on:
       - "docs/**"
       - "assets/**"
       - "mkdocs.yml"
+      - "overrides/**"
+      - "layouts/**"
       - "requirements-docs.txt"
       - ".github/workflows/docs.yml"
   workflow_dispatch:

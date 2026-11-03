@@ -1,9 +1,34 @@
 ---
-title: FAQ - Claude Code with local models on a Mac
+title: "FAQ: Claude Code with local models on a Mac"
 description: >-
   Answers about Claude Code Local: whether it is really offline, if it needs an
   API key, which Mac and model to use, Windows and Intel support, Ollama and
   GGUF, MCP servers, images, cost and license.
+faq:
+  - q: Do I need an Anthropic API key or a Claude subscription?
+    a: >-
+      No. The launchers send sk-local as the key and the server never checks
+      it. You do need the Claude Code CLI installed, which is free to install.
+  - q: Which Mac do I need?
+    a: >-
+      Any Apple Silicon Mac (M1 or newer). Memory decides the model: setup.sh
+      gives 8 GB Macs Qwen 3.5 2B (8-bit) and 16 to 31 GB Macs Qwen 3.5 4B
+      (bf16), both able to read images, 32 GB Gemma 4 12B, 64 GB Gemma 4 31B
+      and 96 GB or more Qwen 3.8 27B.
+  - q: Does it run on Windows, Linux or an Intel Mac?
+    a: >-
+      Linux and Windows, yes. The installer looks at your hardware (NVIDIA,
+      AMD/Vulkan or CPU), downloads a pinned llama.cpp build and a vision model
+      that fits, and starts Claude Code against it. Intel Macs are not
+      supported: the Mac path uses Apple's MLX, which needs Apple Silicon.
+  - q: Can I use GGUF files or a model from LM Studio?
+    a: >-
+      Only MLX-format models. GGUF files will not load. Point MLX_MODEL at a
+      Hugging Face ID or a local MLX folder.
+  - q: What does it cost?
+    a: >-
+      The software is free and MIT licensed. Running it costs your Mac's
+      electricity and disk space for models.
 ---
 
 # FAQ
