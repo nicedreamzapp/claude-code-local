@@ -1,6 +1,7 @@
 #!/bin/bash
 # keepgoing — out of Claude credits? Type `exit` in Claude Code, then run this (or `keep going`)
-# in the same folder. Your conversation carries on with a free cloud model or a model on this Mac.
+# in the same folder. Your conversation carries on with a free cloud model or a model on this machine
+# (MLX on a Mac, llama.cpp on Linux).
 # `keepgoing --auto` skips the menu and picks for you (scripts/limit-handoff.py uses it).
 #
 # Settings (all optional), read from the environment or ~/.config/claude-code-local/keepgoing.env:
@@ -11,6 +12,12 @@
 #   MLX_PORT, MLX_PYTHON, MLX_SERVER   same as scripts/start-mlx-server.sh
 
 HERE="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+
+# Linux: the llama.cpp install (portable/setup-linux.sh) does the work. Same picker, same flags,
+# plus `-- <claude args>`. Windows runs bin/keepgoing.cmd, which lands in the same place.
+if [ "$(uname -s)" != "Darwin" ]; then
+  exec python3 -I "$HERE/../portable/ccl.py" keepgoing "$@"
+fi
 CONF="$HOME/.config/claude-code-local/keepgoing.env"
 [ -f "$CONF" ] && { set -a; . "$CONF"; set +a; }
 
@@ -18,6 +25,7 @@ PORT="${MLX_PORT:-4000}"
 PYTHON="${MLX_PYTHON:-$HOME/.local/mlx-server/bin/python3}"
 SERVER="${MLX_SERVER:-$HOME/.local/mlx-native-server/server.py}"
 CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
+MLX_LOG="${MLX_LOG:-/tmp/mlx-server-$(id -un).log}"  # one per user
 
 SEL="$(python3 "$HERE/keepgoing.py" "$@")" || exit 0
 IFS=$'\t' read -r SID KIND MODEL ALREADY <<< "$SEL"
@@ -46,15 +54,15 @@ if [ "$ALREADY" != "1" ]; then
     sleep 3
   fi
   echo ""; echo "  Loading $MODEL on this Mac (the first time downloads it) …"
-  MLX_MODEL="$MODEL" MLX_PORT="$PORT" "$PYTHON" "$SERVER" >/tmp/mlx-server.log 2>&1 &
+  MLX_MODEL="$MODEL" MLX_PORT="$PORT" "$PYTHON" "$SERVER" >"$MLX_LOG" 2>&1 &
   for i in $(seq 1 600); do
     curl -s "http://localhost:$PORT/health" 2>/dev/null | grep -q '"ok"' && break
     sleep 2
     [ $((i % 15)) -eq 0 ] && echo "  still loading … ($((i * 2))s)"
   done
   curl -s "http://localhost:$PORT/health" 2>/dev/null | grep -q '"ok"' || {
-    echo "  The model didn't come up. Last lines of /tmp/mlx-server.log:"
-    tail -5 /tmp/mlx-server.log | sed 's/^/    /'
+    echo "  The model didn't come up. Last lines of $MLX_LOG:"
+    tail -5 "$MLX_LOG" | sed 's/^/    /'
     exit 1; }
 fi
 
@@ -63,9 +71,19 @@ export ANTHROPIC_BASE_URL="http://localhost:$PORT" ANTHROPIC_API_KEY=sk-local
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
        CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 unset ANTHROPIC_AUTH_TOKEN
+# Claude Code's header shows the model name it was given, so give it the real one ("local:<model>").
+# The server answers any name. Every background call uses it too, so nothing claims to be Sonnet.
+ALIAS="$(python3 "$HERE/keepgoing.py" --local-alias "$MODEL")"
+export ANTHROPIC_MODEL="$ALIAS" ANTHROPIC_DEFAULT_HAIKU_MODEL="$ALIAS" \
+       ANTHROPIC_DEFAULT_SONNET_MODEL="$ALIAS" ANTHROPIC_DEFAULT_OPUS_MODEL="$ALIAS"
+# Claude Code doesn't know that name, so tell it the window (else: "Model isn't recognized").
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-$(MLX_PORT="$PORT" python3 "$HERE/keepgoing.py" --local-window)}"
+# sk-local is a placeholder, not a real key. Record it as approved so the first run doesn't stop on
+# Claude Code's "Detected a custom API key" question (changes only that entry in ~/.claude.json).
+python3 "$HERE/keepgoing.py" --approve-local-key
 echo ""; echo "  Continuing on $MODEL, 100% on this Mac …"; echo ""
 if [ -n "$KEEPGOING_AFTER_LOCAL" ]; then
-  "$CLAUDE_BIN" --model claude-sonnet-4-6 --resume "$SID"
+  "$CLAUDE_BIN" --model "$ALIAS" --resume "$SID"
 else
-  exec "$CLAUDE_BIN" --model claude-sonnet-4-6 --resume "$SID"
+  exec "$CLAUDE_BIN" --model "$ALIAS" --resume "$SID"
 fi

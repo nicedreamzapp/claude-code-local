@@ -337,3 +337,34 @@ def test_powershell_doctor_report_runs_and_redacts(env, tmp_path):
     assert r.stdout.startswith("claude-code-local doctor report"), r.stdout + r.stderr
     assert str(home) not in r.stdout
     assert "Not installed:" in r.stdout
+
+
+# ── keep going is checked on every OS ─────────────────────────
+
+@pytest.mark.parametrize("os_name", ["Darwin", "Linux"])
+def test_keepgoing_missing_is_a_warning_not_a_failure(env, os_name):
+    r = run_fn(env, f'OS={os_name}; MODE_REPORT=1; check_keepgoing; printf "%s" "$RESULTS"')
+    assert "keepgoing-link" in r.stdout and "keep going not installed" in r.stdout
+    assert "keepgoing-shell" in r.stdout
+    assert "fail|keepgoing" not in r.stdout
+
+
+@pytest.mark.parametrize("os_name, rc", [("Darwin", ".zshrc"), ("Linux", ".bashrc")])
+def test_keepgoing_installed_passes(env, os_name, rc):
+    home = env["_home"]
+    os.makedirs(os.path.join(home, ".local", "bin"))
+    os.symlink(str(ROOT / "bin" / "keepgoing"), os.path.join(home, ".local", "bin", "keepgoing"))
+    with open(os.path.join(home, rc), "w") as f:
+        f.write(f'source "{ROOT}/scripts/keepgoing-shell.sh"\n')
+    r = run_fn(env, f'OS={os_name}; MODE_REPORT=1; check_keepgoing; printf "%s" "$RESULTS"')
+    assert "pass|keepgoing-link|" in r.stdout
+    assert "pass|keepgoing-shell|keep going shell line in ~/" + rc in r.stdout
+    assert "warn|" not in r.stdout and "fail|" not in r.stdout
+
+
+def test_keepgoing_fix_recreates_the_command(env):
+    link = os.path.join(env["_home"], ".local", "bin", "keepgoing")
+    r = run_doctor(env, "--fix", CCL_DOCTOR_OS="Linux")
+    assert os.path.islink(link)
+    assert os.path.realpath(link) == str((ROOT / "bin" / "keepgoing").resolve())
+    assert "recreated the symlink" in r.stdout

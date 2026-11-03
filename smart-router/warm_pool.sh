@@ -36,7 +36,8 @@ case "${1:-start}" in
     echo "  warm pool starting (Qwen :4000 · Gemma :4001)"
     ;;
   stop)
-    for p in 4000 4001; do lsof -ti ":$p" 2>/dev/null | xargs -r kill -9 2>/dev/null; done
+    # Only the server listening on each port; a bare `lsof -ti :port` also lists connected clients.
+    for p in 4000 4001; do lsof -nP -t -iTCP:"$p" -sTCP:LISTEN 2>/dev/null | xargs kill -9 2>/dev/null; done
     echo "  warm pool stopped"
     ;;
   status)

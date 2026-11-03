@@ -33,7 +33,7 @@ OS="$(uname -s)"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
-echo "║     Claude Code Local — Installer                ║"
+echo "║     Claude Code Local v1.0.0 — Installer         ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
 
@@ -48,8 +48,8 @@ if [ "$OS" = "Darwin" ]; then
     echo "    xcode-select --install"
     exit 1
   fi
-  MEM_GB=$(sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}')
-  echo "  Mac:    $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')"
+  MEM_GB=$(/usr/sbin/sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}')
+  echo "  Mac:    $(/usr/sbin/sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')"
   echo "  Memory: ${MEM_GB} GB"
   echo ""
   if [ "$MEM_GB" -lt 16 ]; then

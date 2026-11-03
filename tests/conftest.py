@@ -115,3 +115,10 @@ def fake_model(monkeypatch):
     monkeypatch.setattr(server, "_cached_token_prefix", None)
     monkeypatch.setattr(server, "_first_request", False)
     return fm
+
+
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_claude_config(tmp_path_factory, monkeypatch):
+    """keepgoing pre-approves sk-local in Claude Code's ~/.claude.json. Point every test at a
+    throwaway config dir so the suite never edits the real file of whoever runs it."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config")))

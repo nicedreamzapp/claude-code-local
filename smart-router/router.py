@@ -22,7 +22,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 LISTEN_PORT = int(os.environ.get("ONE_AI_PORT", "4010"))
 MLX_URL   = "http://127.0.0.1:4000"
-DS4_URL   = "http://127.0.0.1:8000"
+DS4_PORT  = 8000
+DS4_URL   = f"http://127.0.0.1:{DS4_PORT}"
 SETUP     = os.path.expanduser("~/Desktop/PROJECTS/Local AI Setup")
 LAUNCH_LIB = f"{SETUP}/launchers/lib/claude-local-common.sh"
 
@@ -144,11 +145,17 @@ def _wait_health(port: int, timeout=180):
         time.sleep(2)
     return False
 
+def _stop_listener_cmd(port: int, sig: str = "TERM") -> str:
+    """Shell command that stops only the process LISTENING on this port. Plain `lsof -ti :port` also
+    lists every client connected to it (Claude Code itself), and `pkill -f <name>` hits servers
+    other people and other jobs started; both used to be here."""
+    return f"lsof -nP -t -iTCP:{int(port)} -sTCP:LISTEN 2>/dev/null | xargs kill -{sig} 2>/dev/null; true"
+
 def _stop_ds4():
-    subprocess.run(["bash", "-lc", "pkill -f ds4-server 2>/dev/null; true"], check=False)
+    subprocess.run(["bash", "-lc", _stop_listener_cmd(DS4_PORT)], check=False)
 
 def _stop_glm():
-    subprocess.run(["bash", "-lc", f"lsof -ti :{GLM_PORT} 2>/dev/null | xargs -r kill -9 2>/dev/null; true"], check=False)
+    subprocess.run(["bash", "-lc", _stop_listener_cmd(GLM_PORT, "9")], check=False)
 
 def _start_warm_pool():
     subprocess.run(["bash", WARM_SH, "start"], check=False)
@@ -164,7 +171,7 @@ def ensure_backend(backend: str):
         port = WARM_PORTS[backend]
         if not _port_listening(port):
             # pool not up (a giant displaced it, or cold start) -> bring it back
-            if _port_listening(8000):
+            if _port_listening(DS4_PORT):
                 sys.stderr.write("[one-ai] unloading DeepSeek to restore warm pool\n"); _stop_ds4()
             if _port_listening(GLM_PORT):
                 sys.stderr.write("[one-ai] unloading GLM to restore warm pool\n"); _stop_glm()
@@ -182,7 +189,7 @@ def ensure_backend(backend: str):
     if backend == "glm":
         if _port_listening(4000) or _port_listening(4001):
             sys.stderr.write("[one-ai] unloading warm pool for GLM-4.5-Air\n"); _stop_warm_pool()
-        if _port_listening(8000): _stop_ds4()
+        if _port_listening(DS4_PORT): _stop_ds4()
         if not _health_ok(GLM_PORT):
             local, repo = MLX_MODELS["glm"]
             subprocess.run(["bash", "-lc",

@@ -3,7 +3,8 @@
 #   irm https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/uninstall.ps1 | iex
 #   powershell -ExecutionPolicy Bypass -File uninstall.ps1 [-With all] [-Purge]
 #
-# Removes the Desktop launcher and the claude-code-local checkout (CCL_DIR). The downloaded
+# Removes the Desktop launcher, the keep going PATH entry and PowerShell profile line, and the
+# claude-code-local checkout (CCL_DIR). The downloaded
 # llama.cpp and models in %LOCALAPPDATA%\claude-code-local (CCL_HOME) are kept unless -Purge.
 #
 # Add-ons: -With / $env:CCL_WITH takes the same names as install.ps1 (moonstone, browser, remote,
@@ -47,6 +48,11 @@ function Uninstall-ClaudeCodeLocal {
   # Only the launcher that runs THIS install.
   if ((Test-Path $desk) -and ((Get-Content -Raw $desk).IndexOf($InstallDir, [StringComparison]::OrdinalIgnoreCase) -ge 0)) {
     Remove-Item $desk -Force; Write-Host "-> Removed $desk"
+  }
+  # keep going: its PATH entry and PowerShell profile line (CCL_PROFILES / CCL_NO_PATH as in install.ps1)
+  $kgHelper = Join-Path $InstallDir "scripts\keepgoing-windows.ps1"
+  if (Test-Path $kgHelper) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $kgHelper -Uninstall -RepoDir $InstallDir
   }
   if (Test-Path $InstallDir) {
     Set-Location $env:USERPROFILE

@@ -29,6 +29,10 @@ import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
+# Release version. Keep in step with the VERSION file at the repo root
+# (tests/test_version.py checks they match).
+__version__ = "1.0.0"
+
 # MLX is the Mac inference backend. Guard the import so this module can also be
 # imported on Linux/Windows (which have no MLX) purely to reuse the pure
 # Anthropic<->tool-call translation helpers below — portable/portable_server.py
@@ -115,12 +119,13 @@ CODE_MODE_ENABLED = os.environ.get("MLX_CODE_MODE", "1") != "0"
 # Vision: "auto" (default) turns it on when mlx-vlm is installed AND the model's
 # config.json has a vision_config. "1" requires it, "0" keeps the text-only path.
 VISION_SETTING = (os.environ.get("MLX_VISION") or "auto").strip().lower()
-# Hard ceiling on prompt tokens. A request over it gets the same 400 the real
-# API sends for an over-long prompt, so Claude Code compacts instead of the
-# server allocating KV cache the Mac does not have. 0 = no ceiling. In our
-# runs that 400 is what triggered compaction: Claude Code 2.1 did not compact
-# on its own first, even with CLAUDE_CODE_AUTO_COMPACT_WINDOW set to the same
-# number (scripts/mac-tier.sh sets both).
+# Hard ceiling on prompt + answer tokens. A prompt over it (or one that leaves
+# no room to answer) gets the same 400 the real API sends for an over-long
+# prompt, so Claude Code compacts instead of the server allocating KV cache the
+# Mac does not have, and max_tokens is trimmed to the room left. 0 = no
+# ceiling. This is the only thing that enforces a small window: Claude Code
+# 2.1.306 treats any CLAUDE_CODE_AUTO_COMPACT_WINDOW under 100000 as 100000, so
+# scripts/mac-tier.sh no longer sets it for the 16K tiers.
 MAX_CONTEXT = env_int("MLX_MAX_CONTEXT", 0)
 # Longest side, in pixels, an image is shrunk to before the vision tower sees
 # it. A 1568x980 screenshot raised the server's peak by about 0.4 GB on
@@ -1266,6 +1271,39 @@ def template_messages(messages, tok=None):
     return [_plain(m) for m in messages]
 
 
+def _text_of(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b.get("text", "") for b in content
+                         if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+def hoist_system_messages(body):
+    """Move role "system" entries out of messages and into the system prompt.
+
+    Claude Code 2.1.306 sends one for a model name it doesn't recognize (the
+    "local:<model>" names keep going uses): its environment section (working
+    directory, platform) arrives as a {"role": "system"} message after the first
+    user turn instead of inside `system`. Chat templates such as Qwen 3.5's
+    refuse a system message anywhere but first ("System message must be at the
+    beginning"), so the prompt fell back to plain text and the model rambled
+    without stopping. Returns a new body; the original is left alone."""
+    msgs = body.get("messages") or []
+    extra = [_text_of(m.get("content")) for m in msgs if m.get("role") == "system"]
+    if not extra:
+        return body
+    body = dict(body)
+    body["messages"] = [m for m in msgs if m.get("role") != "system"]
+    system = body.get("system")
+    if isinstance(system, list):
+        body["system"] = list(system) + [{"type": "text", "text": t} for t in extra if t]
+    else:
+        body["system"] = "\n\n".join(t for t in [system or ""] + extra if t)
+    return body
+
+
 def convert_messages(body, vision=False, tool_ids=False):
     """Convert Anthropic Messages format to MLX chat messages.
 
@@ -1277,6 +1315,7 @@ def convert_messages(body, vision=False, tool_ids=False):
       content items (see collect_images); everywhere else, and with
       vision=False, an image becomes a short "[image omitted]" marker
     """
+    body = hoist_system_messages(body)
     messages = []
     tool_names = {}  # tool_use id -> tool name, for the structured tool messages
     body_messages = body.get("messages", [])
@@ -1970,6 +2009,26 @@ def check_context(prompt_tokens, limit=None):
         raise PromptTooLong(f"prompt is too long: {prompt_tokens} tokens > {limit} maximum")
 
 
+# Under MLX_MAX_CONTEXT a prompt must leave at least this much room to answer
+# (or the whole max_tokens, if that is smaller); otherwise it is "too long".
+MIN_ANSWER_ROOM = 1024
+
+
+def fit_max_tokens(prompt_tokens, max_tokens, limit=None):
+    """max_tokens trimmed so prompt + answer stays inside MLX_MAX_CONTEXT. A prompt
+    that leaves less than MIN_ANSWER_ROOM gets PromptTooLong, so Claude Code
+    compacts instead of getting a cut-off answer."""
+    limit = MAX_CONTEXT if limit is None else limit
+    check_context(prompt_tokens, limit)
+    if not limit:
+        return max_tokens
+    room = limit - prompt_tokens
+    if room < min(max_tokens, MIN_ANSWER_ROOM):
+        raise PromptTooLong(f"prompt is too long: {prompt_tokens} tokens leaves {room} of "
+                            f"{limit} for the answer")
+    return min(max_tokens, room)
+
+
 def generate_response(body, on_start=None, on_text=None):
     """Run MLX inference and return Anthropic-formatted response.
 
@@ -1978,6 +2037,10 @@ def generate_response(body, on_start=None, on_text=None):
     on_text fires with each thinking-filtered text chunk as it is generated.
     """
     global _first_request
+
+    # Before any mode looks at the system prompt: code mode finds the working
+    # directory there, and the template must see a single leading system message.
+    body = hoist_system_messages(body)
 
     # In browser mode, strip Claude Code bloat before inference.
     # Otherwise, auto-detect Claude Code coding sessions and apply code mode.
@@ -2041,10 +2104,12 @@ def generate_response(body, on_start=None, on_text=None):
 
     # Tokenize (with tools if present)
     token_ids = tokenize_messages(messages, tools=llm_tools)
-    if compaction and MAX_CONTEXT and len(token_ids) > MAX_CONTEXT:
+    # A compaction request is trimmed to fit, leaving room for the summary.
+    compact_budget = MAX_CONTEXT - min(max_tokens, MIN_ANSWER_ROOM) if MAX_CONTEXT else 0
+    if compaction and MAX_CONTEXT and len(token_ids) > compact_budget:
         before = len(messages)
         messages, _ = fit_compaction(
-            messages, lambda m: len(tokenize_messages(m, tools=llm_tools)), MAX_CONTEXT)
+            messages, lambda m: len(tokenize_messages(m, tools=llm_tools)), compact_budget)
         token_ids = tokenize_messages(messages, tools=llm_tools)
         log(f"  Compaction over MLX_MAX_CONTEXT: dropped {before - len(messages)} oldest "
             f"messages to fit ({len(token_ids)} tokens)")
@@ -2060,7 +2125,10 @@ def generate_response(body, on_start=None, on_text=None):
 
     prompt_tokens = len(token_ids)
     log(f"  Prompt: {prompt_tokens} tokens")
-    check_context(prompt_tokens)
+    fitted = fit_max_tokens(prompt_tokens, max_tokens)
+    if fitted != max_tokens:
+        log(f"  max_tokens {max_tokens} -> {fitted} to stay inside MLX_MAX_CONTEXT")
+        max_tokens = fitted
 
     def run_generation(msgs, prompt_ids, kwargs):
         """One generation pass. Vision: mlx-vlm, whole prompt, images from the
@@ -2697,7 +2765,7 @@ class AnthropicHandler(BaseHTTPRequestHandler):
             # The memory block is here so `curl :4000/health` answers "how close
             # to the edge is this box?" without attaching to the process.
             # mx_peak_gb is the honest one; see mem_snapshot on why not rss.
-            payload = {"status": "ok", "model": MODEL_PATH,
+            payload = {"status": "ok", "version": __version__, "model": MODEL_PATH,
                        "prefill_size": PREFILL_SIZE, "vision": VISION,
                        "max_context": MAX_CONTEXT}
             payload.update(mem_snapshot())
@@ -2714,6 +2782,7 @@ if __name__ == "__main__":
     print("║  Claude Code → MLX → Apple Silicon (direct)     ║")
     print("║  Tool use: enabled (Anthropic ↔ Llama native)   ║")
     print("║  Prompt caching: enabled (KV reuse)             ║")
+    print(f"║  claude-code-local v{__version__:<28}║")
     print("╚══════════════════════════════════════════════════╝")
     print()
 

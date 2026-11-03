@@ -4,7 +4,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPS="${1:-3}"
-stop_ollama() { pkill -f "/opt/homebrew/bin/ollama serve"; while lsof -nP -iTCP:11434 -sTCP:LISTEN >/dev/null 2>&1; do sleep 1; done; }
+stop_ollama() { lsof -nP -t -iTCP:11434 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; while lsof -nP -iTCP:11434 -sTCP:LISTEN >/dev/null 2>&1; do sleep 1; done; }
 stop_ollama
 cd /tmp && OLLAMA_CONTEXT_LENGTH=65536 nohup /opt/homebrew/bin/ollama serve >/tmp/ccl-bench/ollama-t02-serve.log 2>&1 </dev/null &
 until curl -sf http://127.0.0.1:11434/api/version >/dev/null; do sleep 1; done

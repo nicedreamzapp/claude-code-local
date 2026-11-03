@@ -1,5 +1,30 @@
 <div align="center">
 
+<a href="https://www.youtube.com/watch?v=XNSdQtlTwWo"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/587a5449e6f497cd51fc9e1cbc0ce5ee05237368/assets/readme/promo-video-thumb.jpg" width="640" alt="Watch the video: Claude Code Local, an AI that runs on your own computer, free, private and offline"></a>
+
+<!-- Voiced launch demo goes here once it is on YouTube (58 s: hit the limit, type exit, keep going locally):
+<a href="https://www.youtube.com/watch?v=VIDEO_ID"><img src="https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg" width="640" alt="Watch the demo: hit your Claude Code limit, type exit, keep going on a local model"></a>
+-->
+
+# Hit your limit? Keep going.
+
+**Claude Code, running on your own computer when your Claude usage runs out. Same tools, same project, no API key.**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash
+```
+
+Mac and Linux. Windows is [one PowerShell line](#-on-linux-or-a-windows-pc). On a Mac, Linux or Windows, type `exit` in Claude Code, then `keep going`, and the same conversation carries on.
+
+**[Agent-12](https://nicedreamzapp.github.io/agent12/) score** for the model setup picks on a 96 GB Mac, Qwen 3.8 27B: **12/12 easy, 7/8 hard**.
+<sub>Scored in Agent-12's own harness, not inside Claude Code. [How the models compare](#-pick-your-ai)</sub>
+
+</div>
+
+<br>
+
+<div align="center">
+
 # 🧠⚡ Claude Code Local
 
 ### Claude Code, running on your own Mac. No cloud. No API key. No waiting.
@@ -19,8 +44,6 @@
 <a href="LICENSE"><img src="https://img.shields.io/badge/📜_License-MIT-yellow?style=for-the-badge" alt="MIT"></a>
 <a href="https://discord.gg/ZdSqgAxUW"><img src="https://img.shields.io/discord/1497121921580404818?label=Discord&logo=discord&color=5865F2&style=for-the-badge" alt="Discord"></a>
 
-<a href="https://www.youtube.com/watch?v=XNSdQtlTwWo"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/587a5449e6f497cd51fc9e1cbc0ce5ee05237368/assets/readme/promo-video-thumb.jpg" width="640" alt="Watch the video: Claude Code Local, an AI that runs on your own computer, free, private and offline"></a>
-
 </div>
 
 **In one sentence:** a small Python server ([`proxy/server.py`](proxy/server.py)) runs open AI models on your Mac's chip with Apple's MLX and answers Claude Code in Anthropic's own API format, so Claude Code works with no cloud model and no API key.
@@ -30,11 +53,6 @@ it takes one command to keep working on a local model.
 
 Other things I built that go with it are in [the local-first family](#-the-local-first-family).
 
-<p align="center">
-  <img src="assets/demo.gif" width="860" alt="Claude Code editing a file with Gemma 4 31B running locally on a Mac, no cloud">
-  <br><em>A real session, unedited. Claude Code reads and edits the file, and the AI answering is running on the laptop.</em>
-</p>
-
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-banner.svg" width="100%" alt="01. What I built. The glue that makes local models usable inside Claude Code"></picture>
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s01-r1.svg" width="100%" alt="The MLX server. Speaks the Anthropic Messages API with streaming and repairs garbled tool JSON. The Native Engine. A one-file terminal coding agent with a short fixed system prompt. keepgoing. Resumes your last Claude Code conversation on a free cloud or local model."></picture>
 
@@ -43,7 +61,7 @@ Matt Macosko wrote the glue that makes local models usable inside Claude Code. T
 - ⚡ **[`proxy/server.py`](proxy/server.py)**: the MLX server. Speaks the Anthropic Messages API with streaming, turns each model's own tool-call format (Gemma 4, Qwen, Llama JSON) into Claude Code tool calls, repairs garbled tool JSON, and reuses the prompt cache between turns so long sessions don't re-read everything.
 - 🧪 **[`scripts/test_parse_tool_calls.py`](scripts/test_parse_tool_calls.py)** and **[`scripts/test_mlx_server.py`](scripts/test_mlx_server.py)**: tests for the tool-call parser (no model needed) and for multi-step tool calls against a running server.
 - 🏎️ **[`agent/agent.py`](agent/agent.py)**: the Native Engine, a one-file terminal coding agent with a short fixed system prompt so the cache survives every turn. [`bench/agent_bench.py`](bench/agent_bench.py) reproduces its cache numbers.
-- 🔋 **[`bin/keepgoing`](bin/keepgoing)** + [`bin/keepgoing.py`](bin/keepgoing.py): finds your last Claude Code conversation in this folder and resumes it on a free cloud or local model.
+- 🔋 **[`bin/keepgoing`](bin/keepgoing)** + [`bin/keepgoing.py`](bin/keepgoing.py): finds your last Claude Code conversation in this folder and resumes it on a free cloud or local model. On Linux and Windows ([`bin/keepgoing.cmd`](bin/keepgoing.cmd)) it resumes on the llama.cpp model through `portable/ccl.py keepgoing`.
 - 🚀 **[`install.sh`](install.sh)**, **[`setup.sh`](setup.sh)** and **[`scripts/doctor.sh`](scripts/doctor.sh)**: check the Mac, pick a model that fits its memory, install everything and make a Desktop launcher.
 - 🩺 **Doctor**: checks the core (Claude Code, model server, model files, Python, llama.cpp) and every add-on you installed. Mac or Linux: `bash scripts/doctor.sh`. Windows: `powershell -ExecutionPolicy Bypass -File scripts\doctor.ps1`. Add `--fix` / `-Fix` to restart your own service that is down or recreate a missing symlink (it never deletes anything), and `--report` / `-Report` for a privacy-safe block to paste into a bug report.
 - 🎮 **[`launchers/`](launchers/)** with the shared [`launchers/lib/claude-local-common.sh`](launchers/lib/claude-local-common.sh): the double-click modes below.
@@ -68,8 +86,8 @@ answering runs on your Mac (or your Linux or Windows PC), with no API key and no
    curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/main/install.sh | bash
    ```
 
-2. **Switch to local.** On a Mac, type `exit` in Claude Code, then `keep going`, and the same
-   conversation carries on with a local model. Or double-click **Claude Local** on your Desktop for a
+2. **Switch to local.** Type `exit` in Claude Code, then `keep going` (Mac, Linux or Windows), and
+   the same conversation carries on with a local model. Or double-click **Claude Local** on your Desktop for a
    fresh session (`claude-local` on Linux).
 3. **Switch back when your limit resets.** Plain `claude` is never changed by the install, so it
    still uses your Claude plan.
@@ -87,19 +105,25 @@ When Claude runs out, type **`exit`** in Claude Code, then **`keep going`**. You
 and **the same conversation carries on** with whichever model you pick:
 
 - ☁️ **Free cloud models** from OpenRouter (add a free key, see below)
-- 💻 **Models on your Mac** from the lineup below, sized to fit your memory
+- 💻 **Models on your machine**: on a Mac, the lineup below sized to fit your memory; on Linux and
+  Windows, the llama.cpp model the installer picked for your hardware
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/nicedreamzapp/trinidad-head/b4429e7e8773f73446552a9e589f7589b177d9c2/docs/images/keep-going.jpg" width="860" alt="The keep going menu: free cloud and local models to continue a Claude conversation">
 </p>
 
-`setup.sh` installs it for you. To add it by hand, or to turn on the free cloud models:
+Every installer sets it up for you: `setup.sh` on a Mac, `install.sh` on Linux (it adds the line to
+`~/.bashrc`), `install.ps1` on Windows (`keep going` works in PowerShell and cmd). To add it by hand,
+or to turn on the free cloud models:
 
 ```bash
-echo 'source "$HOME/claude-code-local/scripts/keepgoing-shell.sh"' >> ~/.zshrc   # the "keep going" command
+echo 'source "$HOME/claude-code-local/scripts/keepgoing-shell.sh"' >> ~/.zshrc   # ~/.bashrc on Linux
 mkdir -p ~/.config/claude-code-local
 echo 'OPENROUTER_API_KEY=your-free-key' >> ~/.config/claude-code-local/keepgoing.env   # optional
 ```
+
+On Windows the same key goes in `%USERPROFILE%\.config\claude-code-local\keepgoing.env`, and the
+hook by hand is `powershell -ExecutionPolicy Bypass -File scripts\keepgoing-windows.ps1`.
 
 Want a reminder at the bottom of every Claude window? Point your status line at
 `scripts/statusline-keepgoing.sh`. It says *"💡 Out of Claude credits? Type exit, then keep going to
@@ -134,7 +158,7 @@ Claude Code's language directly, so there's **nothing in the middle**, and that'
 
 - 🍎 A Mac with **Apple Silicon** (M1 or newer)
 - 🐍 **Python 3.12** (setup installs it for you)
-- 🤖 **Claude Code**: `npm install -g @anthropic-ai/claude-code`
+- 🤖 **Claude Code**: the installer adds it if it is missing (`curl -fsSL https://claude.ai/install.sh | bash`)
 
 Setup looks at your Mac's memory and picks a model that fits:
 
@@ -219,7 +243,7 @@ With no terminal to ask on and no `--with`, no add-ons are installed.
 **Uninstall:** `bash ~/claude-code-local/uninstall.sh` (add `--with phone,remote` or `--all` to remove add-ons too, `--purge` to delete their data).
 
 > 🐛 **Asked to sign in to a Claude account?** Your `claude` is too old. Update it:
-> `npm install -g @anthropic-ai/claude-code`
+> `curl -fsSL https://claude.ai/install.sh | bash`
 
 <details>
 <summary>🛠️ Prefer to do it by hand?</summary>
@@ -454,7 +478,7 @@ CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 
 **Claude Code says "5-hour limit reached". What can I do?**
 Wait for the reset time it shows, pay for extra usage, or keep working on a local model with this
-repo. On a Mac, type `exit`, then `keep going`, and your conversation carries on locally.
+repo. Type `exit`, then `keep going` (Mac, Linux or Windows), and your conversation carries on locally.
 
 **When does the Claude Code usage limit reset?**
 The message tells you the time. Run `/usage` inside Claude Code to see each limit and when it resets.

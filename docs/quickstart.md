@@ -37,7 +37,7 @@ ANTHROPIC_API_KEY=sk-local \
 claude --model claude-sonnet-4-6
 ```
 
-The server prints its settings on start, then logs every request to stderr. Launchers send that log to `/tmp/mlx-server.log`.
+The server prints its settings on start, then logs every request to stderr. Launchers send that log to `/tmp/mlx-server-<your user name>.log`.
 
 ## 3. Check the server
 
@@ -107,7 +107,7 @@ When cloud Claude runs out mid-task, type `exit` in Claude Code and then, in the
 keep going
 ```
 
-You get a menu of free OpenRouter models (if you added a key) and local models that fit your Mac's memory. Pick one and the **same conversation** resumes with `claude --resume`. Details in [Configuration](configuration.md#keep-going).
+It works the same on Linux and in PowerShell or cmd on Windows. You get a menu of free OpenRouter models (if you added a key) and local models: the ones that fit your Mac's memory, or the llama.cpp model the Linux/Windows installer picked. Pick one and the **same conversation** resumes with `claude --resume`. Details in [Configuration](configuration.md#keep-going).
 
 !!! note
     Picking a free cloud model sends that conversation to OpenRouter. Only the local choices keep it on the Mac.

@@ -8,10 +8,10 @@ description: >-
 
 # Troubleshooting
 
-Start with the server log. Launchers write it to **`/tmp/mlx-server.log`**; if you started the server yourself, it is the terminal it runs in. Every request logs its prompt size, cache hits, tokens per second, parsed tool calls and peak memory.
+Start with the server log. Launchers write it to **`/tmp/mlx-server-<your user name>.log`**; if you started the server yourself, it is the terminal it runs in. Every request logs its prompt size, cache hits, tokens per second, parsed tool calls and peak memory.
 
 ```bash
-tail -f /tmp/mlx-server.log
+tail -f /tmp/mlx-server-$(id -un).log
 curl -s http://localhost:4000/health
 bash ~/claude-code-local/scripts/doctor.sh
 ```
@@ -53,7 +53,7 @@ Two costs stack up on the first request: loading the weights into memory, then p
 
 ## `ERROR: MLX server failed to respond on port 4000 within 120s`
 
-The launcher started the server but `/health` never answered. Read `/tmp/mlx-server.log`. Common causes:
+The launcher started the server but `/health` never answered. Read `/tmp/mlx-server-<your user name>.log`. Common causes:
 
 - The model is still **downloading**. A first download of 5 to 30 GB can take longer than the wait. Download it first with `bash scripts/download-and-import.sh <name>`.
 - The model does not fit in memory and the process was killed.
@@ -139,7 +139,9 @@ The server got something that is not a JSON object, for example from a hand-writ
 
 - `No Claude Code conversation found for this folder:` run it from the folder you were working in.
 - `(add a free OpenRouter key to see these — see README)` or `(couldn't reach OpenRouter: ...)`: the cloud list needs `OPENROUTER_API_KEY` and a network connection. Local models still work.
-- `The model didn't come up. Last lines of /tmp/mlx-server.log:` read those lines; usually memory or download problems as above.
+- `The model didn't come up. Last lines of /tmp/mlx-server-<your user name>.log:` read those lines; usually memory or download problems as above.
+- Linux and Windows: `Not installed yet. Run:  python3 ccl.py install` means there is no llama.cpp model to fall back on; run the installer once. `llama-server did not come up on :8080` means another program owns that port; set `CCL_LLAMA_PORT` (and `CCL_PORT` for 4000).
+- Windows: `keep going` not found in a new window? Run `powershell -ExecutionPolicy Bypass -File scripts\doctor.ps1 -Fix`, which puts `bin\keep.cmd` on your PATH and the PowerShell profile line back. `bin\keepgoing.cmd` always works by its full path.
 
 ## Native Engine
 

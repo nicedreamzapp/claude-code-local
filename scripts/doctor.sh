@@ -121,16 +121,20 @@ http_code() {
 }
 answers() { [ "$(http_code "http://127.0.0.1:$1${2:-/}")" != "000" ]; }
 
+# sysctl lives in /usr/sbin, which a non-login shell's PATH may lack: then memory read as 0 GB and
+# the doctor recommended the 2B tier on any Mac. Call it by its full path when it is there.
+SYSCTL="$( [ -x /usr/sbin/sysctl ] && echo /usr/sbin/sysctl || echo sysctl )"
+
 total_ram_gb() {
   if [ "$OS" = Darwin ]; then
-    sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}'
+    "$SYSCTL" -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}'
   else
     awk '/^MemTotal:/ {print int(($2+524288)/1048576)}' /proc/meminfo 2>/dev/null
   fi
 }
 
 cpu_name() {
-  if [ "$OS" = Darwin ]; then sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Apple Silicon"
+  if [ "$OS" = Darwin ]; then "$SYSCTL" -n machdep.cpu.brand_string 2>/dev/null || echo "Apple Silicon"
   else awk -F: '/model name/ {gsub(/^ +/,"",$2); print $2; exit}' /proc/cpuinfo 2>/dev/null; fi
 }
 
@@ -301,9 +305,20 @@ check_models_linux() {
     record pass models "model files present ($(json_get "$cfg" model_name), $(json_get "$cfg" quant))"
   elif [ -f "$gguf" ]; then record warn models "model present but its vision projector file is missing (re-run the installer)"
   else record fail models "model file missing (re-run the installer to download it again)"; fi
-  if [ -x "$bin" ]; then
+  if [ ! -x "$bin" ]; then record fail llama "llama-server binary missing (re-run the installer)"; return; fi
+  # Present is not enough: on stock Ubuntu 24.04 it could not start because libgomp.so.1 was
+  # missing. ldd lists every shared library it can't find as "not found".
+  local missing=""
+  if have ldd; then
+    missing="$(ldd "$bin" 2>/dev/null | awk '/not found/ {print $1}' | sort -u | tr '\n' ' ' | sed 's/ $//')"
+  fi
+  if [ -n "$missing" ]; then
+    local hint=" (install the system package that provides it)"
+    case "$missing" in *libgomp*) hint=" (Debian/Ubuntu: sudo apt-get install libgomp1)" ;; esac
+    record fail llama "llama-server can't start, missing libraries: $missing$hint"
+  else
     record pass llama "llama-server present (build ${tag:-unknown}, $(json_get "$cfg" accel))"
-  else record fail llama "llama-server binary missing (re-run the installer)"; fi
+  fi
 }
 
 check_core() {
@@ -327,8 +342,29 @@ check_core() {
   if [ "$OS" = Darwin ] && [ -d "$HOME/.local/mlx-native-server" ]; then
     link_check server-link "$HOME/.local/mlx-native-server/server.py" "$REPO_DIR/proxy/server.py"
   fi
-  if [ -L "$HOME/.local/bin/keepgoing" ]; then
-    link_check keepgoing-link "$HOME/.local/bin/keepgoing" "$REPO_DIR/bin/keepgoing"
+  check_keepgoing
+}
+
+# keep going: the command and the shell rc line. setup.sh (macOS) and portable/setup-linux.sh
+# (Linux) install both; an older install has neither, so missing is a warning, never a failure.
+check_keepgoing() {
+  local link="$HOME/.local/bin/keepgoing"
+  if [ -e "$link" ] || [ -L "$link" ] || [ "$MODE_FIX" = 1 ]; then
+    link_check keepgoing-link "$link" "$REPO_DIR/bin/keepgoing"
+  else
+    record warn keepgoing-link "keep going not installed: $(tilde "$link") missing (run with --fix to add it)"
+  fi
+  local rc found=""
+  for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    if [ -f "$rc" ] && grep -q "scripts/keepgoing-shell.sh" "$rc"; then found="$rc"; break; fi
+  done
+  if [ -n "$found" ]; then
+    record pass keepgoing-shell "keep going shell line in $(tilde "$found")"
+  else
+    record warn keepgoing-shell "no keep going line in ~/.zshrc or ~/.bashrc (re-run the installer to add it)"
+  fi
+  if [ "$OS" != Darwin ] && ! have python3; then
+    record fail keepgoing-python "keep going needs python3 on PATH"
   fi
 }
 
@@ -452,12 +488,13 @@ print_report() {
   else osname="$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Linux}")"; fi
   kernel="$(uname -r)"
   commit="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  ccl_ver="$(head -n1 "$REPO_DIR/VERSION" 2>/dev/null || echo unknown)"
   failed="$(echo "$RESULTS" | awk -F'|' '$1=="fail" {sub(/^fail\|[^|]*\|/,""); print "  - " $0}')"
   warned="$(echo "$RESULTS" | awk -F'|' '$1=="warn" {sub(/^warn\|[^|]*\|/,""); print "  - " $0}')"
   passed="$(echo "$RESULTS" | awk -F'|' '$1=="pass" {print $2}' | tr '\n' ' ')"
   skipped="$(echo "$RESULTS" | awk -F'|' '$1=="skip" {print $2}' | tr '\n' ' ')"
   {
-    echo "claude-code-local doctor report (doctor v$DOCTOR_VERSION, repo $commit)"
+    echo "claude-code-local doctor report (doctor v$DOCTOR_VERSION, claude-code-local $ccl_ver, repo $commit)"
     echo "OS:        $osname ($ARCH, kernel $kernel)"
     echo "Chip/GPU:  $(gpu_name)"
     echo "RAM:       $(total_ram_gb) GB"

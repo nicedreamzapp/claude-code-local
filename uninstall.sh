@@ -68,19 +68,21 @@ else
   echo "· MLX virtualenv not found (already removed)"
 fi
 
-# ── "keep going" command and its .zshrc line ───────────────────
+# ── "keep going" command and its shell rc line ─────────────────
+# setup.sh writes it to ~/.zshrc; portable/setup-linux.sh to ~/.bashrc (and ~/.zshrc if present).
 KG="$HOME/.local/bin/keepgoing"
 if [ -L "$KG" ] && readlink "$KG" | grep -q "/bin/keepgoing$"; then
   rm -f "$KG"
   echo "✓ Removed $KG"
 fi
-ZSHRC="$HOME/.zshrc"
-if [ -f "$ZSHRC" ] && grep -q "scripts/keepgoing-shell.sh" "$ZSHRC"; then
-  tmp="$(mktemp)"
-  grep -v -e "scripts/keepgoing-shell.sh" -e '^# Claude Code Local: type "keep going"' "$ZSHRC" >"$tmp" || true
-  cat "$tmp" >"$ZSHRC" && rm -f "$tmp"
-  echo "✓ Removed the keep going line from ~/.zshrc"
-fi
+for RC in "$HOME/.zshrc" "$HOME/.bashrc"; do
+  if [ -f "$RC" ] && grep -q "scripts/keepgoing-shell.sh" "$RC"; then
+    tmp="$(mktemp)"
+    grep -v -e "scripts/keepgoing-shell.sh" -e '^# Claude Code Local: type "keep going"' "$RC" >"$tmp" || true
+    cat "$tmp" >"$RC" && rm -f "$tmp"
+    echo "✓ Removed the keep going line from ~/$(basename "$RC")"
+  fi
+done
 
 # The iMessage phone scripts in ~/.claude/ belong to the "phone" add-on
 # (claude-screen-to-phone); remove them with --with phone.
@@ -91,7 +93,7 @@ CCL_PORT="${CCL_PORT:-4000}"
 MLX_PID=$(lsof -ti "tcp:$CCL_PORT" -sTCP:LISTEN 2>/dev/null || true)
 stopped=0
 for pid in $MLX_PID; do
-  if ps -o command= -p "$pid" 2>/dev/null | grep -q "mlx-native-server/server.py\|proxy/server.py"; then
+  if ps -ww -o command= -p "$pid" 2>/dev/null | grep -q "mlx-native-server/server.py\|proxy/server.py"; then
     kill "$pid" 2>/dev/null || true
     echo "✓ Stopped MLX server (PID $pid)"
     stopped=1
@@ -100,9 +102,14 @@ done
 [ "$stopped" -eq 1 ] || echo "· No Claude Code Local server running on :$CCL_PORT"
 
 # ── MLX server log ────────────────────────────────────────────
-if [ -f /tmp/mlx-server.log ]; then
-  rm /tmp/mlx-server.log
+MLX_LOG="/tmp/mlx-server-$(id -un).log"
+if [ -O /tmp/mlx-server.log ]; then  # the old shared name, only if it is ours
+  rm -f /tmp/mlx-server.log
   echo "✓ Removed /tmp/mlx-server.log"
+fi
+if [ -f "$MLX_LOG" ]; then
+  rm "$MLX_LOG"
+  echo "✓ Removed $MLX_LOG"
 fi
 
 # ── Downloaded models (optional) ──────────────────────────────

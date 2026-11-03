@@ -284,7 +284,7 @@ Saida obtida:
 Hello! How can I assist you today?
 ```
 
-Servidor MLX (`/tmp/mlx-server.log`):
+Servidor MLX (`/tmp/mlx-server-<your user name>.log`):
 
 ```
 [21:31:07]   Generated: 10 tokens in 63.4s (0.2 tok/s)

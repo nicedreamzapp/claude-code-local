@@ -34,7 +34,7 @@ it. Same Claude Code, same project, no API key, no usage limit.
 
     Setup looks at your memory and graphics hardware and picks a model that fits.
 
-2. **Switch.** On a Mac, type `exit` in Claude Code, then `keep going`. You get a short menu and the
+2. **Switch.** Type `exit` in Claude Code, then `keep going` (Mac, Linux or Windows). You get a short menu and the
    same conversation carries on with the model you pick. Or start a fresh session: double-click
    **Claude Local** on your Desktop (Mac or Windows), or run `claude-local` on Linux.
 

@@ -10,6 +10,11 @@
 
 MLX_SERVER="${MLX_SERVER:-$HOME/.local/mlx-native-server/server.py}"
 MLX_PYTHON="${MLX_PYTHON:-$HOME/.local/mlx-server/bin/python3}"
+# The server log, one per user: a shared /tmp/mlx-server.log mixed users' logs, and once another
+# user owned it, this user's launcher couldn't write it at all.
+MLX_LOG="${MLX_LOG:-/tmp/mlx-server-$(id -un).log}"
+# How long to wait for /health: 180 checks, 2 seconds apart.
+MLX_HEALTH_ATTEMPTS=180
 
 # Read the running server's /health and extract the "model" field. Prints the
 # model path/id on stdout, or nothing if the server isn't up.
@@ -45,7 +50,7 @@ _wait_for_mlx_health() {
   # 180 attempts × 2s = 6 minutes. Enough for a cold load of a large 8-bit model
   # on a warm file cache; not enough for a first-time download from HF — use
   # resolve_mlx_model to point at a local path and avoid downloads entirely.
-  local attempts="${1:-180}"
+  local attempts="${1:-$MLX_HEALTH_ATTEMPTS}"
   local i
   for i in $(seq 1 "$attempts"); do
     if curl -s http://localhost:4000/health 2>/dev/null | grep -q '"status": "ok"'; then
@@ -78,8 +83,25 @@ resolve_mlx_model() {
   fi
 }
 
+# The launchers' server listens on 4000. Pids of the claude-code-local server(s) listening there:
+# the listener on that one port whose command line is our server.py. A server on another port
+# (another user's, a demo, a benchmark) is never touched, and neither is a non-server process.
+_mlx_server_pids() {
+  local port="${1:-4000}" pid
+  for pid in $(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null); do
+    # -ww: without it Linux ps cuts the command at 80 columns and long paths never match
+    if ps -ww -o command= -p "$pid" 2>/dev/null | grep -qE "mlx-native-server/server\.py|proxy/server\.py"; then
+      printf '%s\n' "$pid"
+    fi
+  done
+}
+
+# Stop only the server on port 4000 (the one these launchers start), never every server.py on the
+# machine: a `pkill -f mlx-native-server/server.py` here used to take down servers on other ports.
 _stop_mlx_server() {
-  pkill -f "mlx-native-server/server.py" 2>/dev/null || true
+  local pids
+  pids="$(_mlx_server_pids 4000)"
+  [ -n "$pids" ] && kill $pids 2>/dev/null
   local i
   for i in $(seq 1 15); do
     if ! lsof -i :4000 >/dev/null 2>&1; then
@@ -117,10 +139,10 @@ ensure_mlx_server() {
   MLX_MODEL="$desired" \
   MLX_KV_BITS="${MLX_KV_BITS:-}" \
   MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
-  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  "$MLX_PYTHON" "$MLX_SERVER" >"$MLX_LOG" 2>&1 &
   if ! _wait_for_mlx_health; then
-    echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
-    echo "  Check /tmp/mlx-server.log for details"
+    echo "  ERROR: MLX server failed to respond on port 4000 within $((MLX_HEALTH_ATTEMPTS * 2))s"
+    echo "  Check $MLX_LOG for details"
     exit 1
   fi
 }
@@ -141,10 +163,10 @@ force_restart_mlx_server() {
   MLX_MODEL="$desired" \
   MLX_KV_BITS="${MLX_KV_BITS:-}" \
   MLX_KV_QUANT_START="${MLX_KV_QUANT_START:-}" \
-  "$MLX_PYTHON" "$MLX_SERVER" >/tmp/mlx-server.log 2>&1 &
+  "$MLX_PYTHON" "$MLX_SERVER" >"$MLX_LOG" 2>&1 &
   if ! _wait_for_mlx_health; then
-    echo "  ERROR: MLX server failed to respond on port 4000 within 120s"
-    echo "  Check /tmp/mlx-server.log for details"
+    echo "  ERROR: MLX server failed to respond on port 4000 within $((MLX_HEALTH_ATTEMPTS * 2))s"
+    echo "  Check $MLX_LOG for details"
     exit 1
   fi
 }

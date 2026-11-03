@@ -83,8 +83,9 @@ sent, whether it tried Moonstone or Terminal, and how that went.
 
 ## Honest limits
 
-- The hook is Mac only. It opens windows with `osascript`. The manual `keep going` command does
-  not change.
+- The hook opens its window through Moonstone (any OS) or, without Moonstone, a macOS Terminal
+  window via `osascript`. On Linux and Windows without Moonstone, type `exit`, then `keep going`
+  yourself (or `keepgoing --auto` for no menu); the manual command works on all three.
 - Free cloud models get busy, mostly later in the day. If the first one is overloaded, type `exit`
   and run `keep going` to pick another, or use a model on your Mac.
 - The old window stays open. Leave it alone or close it, so two windows are not writing to the same

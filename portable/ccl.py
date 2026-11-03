@@ -51,6 +51,19 @@ RUNTIME_OVERHEAD_GB = 1.5
 # Context lengths to try, largest first; we shrink to make a model fit.
 CTX_CHOICES = [16384, 8192, 4096]
 
+# Ports: Claude Code talks to the Anthropic proxy (same port as the Mac server), the proxy talks
+# to llama-server. Both can be moved, e.g. when something else already owns 4000 or 8080.
+PROXY_PORT = int(os.environ.get("CCL_PORT") or 4000)
+LLAMA_PORT = int(os.environ.get("CCL_LLAMA_PORT") or 8080)
+PROXY_URL = f"http://localhost:{PROXY_PORT}"
+# Same switches as the Mac launchers: with these set nothing leaves the machine.
+OFFLINE_ENV = {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL": "1",
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+}
+
 
 def home():
     env = os.environ.get("CCL_HOME")
@@ -438,9 +451,11 @@ def cmd_install(args):
     return cfg
 
 
-def _wait_health(url, timeout_s):
+def _wait_health(url, timeout_s, proc=None):
     deadline = time.time() + timeout_s
     while time.time() < deadline:
+        if proc is not None and proc.poll() is not None:
+            return False  # it exited (missing library, bad model path): no point waiting 10 min
         try:
             with urllib.request.urlopen(url, timeout=5) as r:
                 if r.status == 200:
@@ -465,14 +480,23 @@ def resolve_claude_bin():
     return None
 
 
-def cmd_run(args):
-    h = home()
-    cfgpath = os.path.join(h, "config.json")
+def load_config():
+    cfgpath = os.path.join(home(), "config.json")
     if not os.path.exists(cfgpath):
         raise SystemExit("Not installed yet. Run:  python3 ccl.py install")
     with open(cfgpath) as f:
-        cfg = json.load(f)
+        return json.load(f)
 
+
+def start_servers(cfg, log_path=None):
+    """Start llama-server and the Anthropic proxy; returns (llama_proc, proxy_proc).
+    The caller terminates both. llama_proc is terminated here if anything fails.
+    With log_path, both servers write there instead of this terminal (keep going does this so
+    their output doesn't land in Claude Code's screen)."""
+    out = None
+    if log_path:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        out = open(log_path, "w")
     env = dict(os.environ)
     sep = ";" if platform.system() == "Windows" else ":"
     if platform.system() == "Windows":
@@ -481,29 +505,73 @@ def cmd_run(args):
         env["LD_LIBRARY_PATH"] = cfg["bindir"] + sep + env.get("LD_LIBRARY_PATH", "")
 
     llama_cmd = [cfg["server_bin"], "-m", cfg["model_gguf"], "--mmproj", cfg["mmproj"],
-                 "-c", str(cfg["ctx"]), "--host", "127.0.0.1", "--port", "8080",
+                 "-c", str(cfg["ctx"]), "--host", "127.0.0.1", "--port", str(LLAMA_PORT),
                  "-ngl", str(cfg["ngl"]), "--jinja"] + list(cfg.get("llama_args", []))
     print(f"Starting llama-server ({cfg['model_name']} [{cfg['quant']}], "
           f"{cfg['accel']}, ngl={cfg['ngl']})...")
-    llama_proc = subprocess.Popen(llama_cmd, env=env)
+    llama_proc = subprocess.Popen(llama_cmd, env=env, stdout=out, stderr=out)
     try:
-        if not _wait_health("http://127.0.0.1:8080/health", 600):
-            raise SystemExit("llama-server did not come up on :8080 within 10 min")
-        print("llama-server is up on :8080")
+        if not _wait_health(f"http://127.0.0.1:{LLAMA_PORT}/health", 600, llama_proc):
+            raise SystemExit(f"llama-server did not come up on :{LLAMA_PORT} within 10 min"
+                             + (f" (log: {log_path})" if log_path else ""))
+        print(f"llama-server is up on :{LLAMA_PORT}")
 
         proxy_cmd = [sys.executable, os.path.join(HERE, "portable_server.py")]
         penv = dict(env)
-        penv["LLAMA_SERVER_URL"] = "http://127.0.0.1:8080"
+        penv["LLAMA_SERVER_URL"] = f"http://127.0.0.1:{LLAMA_PORT}"
         penv["CCL_MODEL_NAME"] = f"{cfg['model_name']} [{cfg['quant']}]"
-        print("Starting Anthropic proxy on :4000...")
-        proxy_proc = subprocess.Popen(proxy_cmd, env=penv)
+        penv["CCL_PORT"] = str(PROXY_PORT)
+        print(f"Starting Anthropic proxy on :{PROXY_PORT}...")
+        proxy_proc = subprocess.Popen(proxy_cmd, env=penv, stdout=out, stderr=out)
 
-        if not _wait_health("http://127.0.0.1:4000/health", 60):
-            raise SystemExit("portable proxy did not come up on :4000")
-        print("Proxy is up. Claude Code → http://localhost:4000\n")
+        if not _wait_health(f"http://127.0.0.1:{PROXY_PORT}/health", 60):
+            proxy_proc.terminate()
+            raise SystemExit(f"portable proxy did not come up on :{PROXY_PORT}"
+                             + (f" (log: {log_path})" if log_path else ""))
+        print(f"Proxy is up. Claude Code → {PROXY_URL}\n")
+        return llama_proc, proxy_proc
+    except BaseException:
+        llama_proc.terminate()
+        raise
 
+
+def _kg():
+    """bin/keepgoing.py, which holds the shared keepgoing helpers."""
+    bindir = os.path.join(REPO, "bin")
+    if bindir not in sys.path:
+        sys.path.insert(0, bindir)
+    import keepgoing  # bin/keepgoing.py
+    return keepgoing
+
+
+def local_claude_env(model=None):
+    """Claude Code's environment for a local run. With the model's label, Claude Code is told the
+    real model ("local:<model>") so its header shows it instead of a Claude model; the proxy answers
+    any model name. The sk-local placeholder is pre-approved in ~/.claude.json so the first run
+    doesn't stop on "Detected a custom API key"."""
+    kg = _kg()
+    cenv = dict(os.environ)
+    cenv["ANTHROPIC_BASE_URL"] = PROXY_URL
+    cenv["ANTHROPIC_API_KEY"] = kg.LOCAL_KEY
+    if model:
+        alias = kg.local_model_alias(model)
+        for k in ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                  "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL"):
+            cenv[k] = alias
+        # Claude Code doesn't know that name: tell it the window, or it warns "isn't recognized".
+        cenv.setdefault("CLAUDE_CODE_MAX_CONTEXT_TOKENS", str(kg.local_context_window(PROXY_PORT)))
+    if kg.approve_local_key() == "rejected":
+        print(f"  Claude Code has the local key ({kg.LOCAL_KEY}) marked as rejected. "
+              "Answer Yes when it asks about the custom API key.")
+    return cenv
+
+
+def cmd_run(args):
+    cfg = load_config()
+    llama_proc, proxy_proc = start_servers(cfg)
+    try:
         if args.no_claude:
-            print("Servers running. ANTHROPIC_BASE_URL=http://localhost:4000 "
+            print(f"Servers running. ANTHROPIC_BASE_URL={PROXY_URL} "
                   "ANTHROPIC_API_KEY=sk-local")
             proxy_proc.wait()
             return
@@ -511,19 +579,137 @@ def cmd_run(args):
         claude = resolve_claude_bin()
         if not claude:
             print("Claude Code CLI not found. Install it, then run with these set:")
-            print("  ANTHROPIC_BASE_URL=http://localhost:4000")
+            print(f"  ANTHROPIC_BASE_URL={PROXY_URL}")
             print("  ANTHROPIC_API_KEY=sk-local")
             proxy_proc.wait()
             return
 
-        cenv = dict(os.environ)
-        cenv["ANTHROPIC_BASE_URL"] = "http://localhost:4000"
-        cenv["ANTHROPIC_API_KEY"] = "sk-local"
-        print(f"Launching Claude Code ({cfg['model_name']} [{cfg['quant']}], 100% local)\n")
-        subprocess.call([claude, "--model", "claude-sonnet-4-6"], env=cenv)
+        label = f"{cfg['model_name']} [{cfg['quant']}]"
+        print(f"Launching Claude Code ({label}, 100% local)\n")
+        cenv = local_claude_env(label)
+        subprocess.call([claude, "--model", cenv["ANTHROPIC_MODEL"]], env=cenv)
         proxy_proc.terminate()
     finally:
         llama_proc.terminate()
+
+
+# ─── keep going (Linux + Windows) ─────────────────────────────────────────────
+# The Mac runs bin/keepgoing (bash + MLX). Here the same bin/keepgoing.py finds the conversation
+# and picks the model; this part starts llama.cpp if needed and resumes the conversation.
+
+KEEPGOING_ENV = os.path.join(os.path.expanduser("~"), ".config", "claude-code-local", "keepgoing.env")
+
+
+def load_keepgoing_env(path=KEEPGOING_ENV, environ=None):
+    """KEY=value lines from keepgoing.env into the environment. A real environment variable wins."""
+    environ = os.environ if environ is None else environ
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip().removeprefix("export ").strip()
+                environ.setdefault(k, v.strip().strip("'\""))
+    except OSError:
+        pass
+
+
+def split_keepgoing_args(argv):
+    """keepgoing's own flags, and everything after `--`, which goes to claude as is
+    (e.g. `keepgoing --auto -- -p "finish the tests"`)."""
+    if "--" in argv:
+        i = argv.index("--")
+        return argv[:i], argv[i + 1:]
+    return list(argv), []
+
+
+def pick_for_keepgoing(own_args):
+    """Run bin/keepgoing.py's picker; (session_id, kind, model, already_running) or None."""
+    import contextlib
+    import io
+    kg = _kg()
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            kg.main(own_args)
+    except SystemExit:
+        return None
+    line = out.getvalue().strip().splitlines()
+    if not line:
+        return None
+    sid, kind, model, already = line[-1].split("\t")
+    return sid, kind, model, already == "1"
+
+
+def proxy_is_up():
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{PROXY_PORT}/health", timeout=2) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _hook(name):
+    cmd = os.environ.get(name)
+    if cmd:
+        subprocess.call(cmd, shell=True)
+
+
+def cmd_keepgoing(argv):
+    if os.name == "nt":
+        os.system("")  # turns on ANSI colors in a classic Windows console for the menu
+    load_keepgoing_env()
+    own, extra = split_keepgoing_args(argv)
+    sel = pick_for_keepgoing(own)
+    if not sel:
+        return 0
+    sid, kind, model, already = sel
+    claude = resolve_claude_bin()
+    if not claude:
+        print("Claude Code CLI not found. Install it, then run keep going again.")
+        return 1
+
+    if kind == "cloud":
+        # OpenRouter speaks the Anthropic Messages API, so Claude Code talks to it directly.
+        cenv = dict(os.environ)
+        cenv.pop("ANTHROPIC_API_KEY", None)
+        cenv.update({"ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+                     "ANTHROPIC_AUTH_TOKEN": os.environ.get("OPENROUTER_API_KEY", ""),
+                     "ANTHROPIC_MODEL": model, "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
+                     "ANTHROPIC_DEFAULT_SONNET_MODEL": model, "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
+                     "API_TIMEOUT_MS": "600000", "DISABLE_TELEMETRY": "1"})
+        print(f"\n  Continuing on {model} (free cloud) …\n")
+        return subprocess.call([claude, "--model", model, "--resume", sid] + extra, env=cenv)
+
+    # Local: this install's llama.cpp model behind the Anthropic proxy.
+    procs = None
+    try:
+        if not (already or proxy_is_up()):
+            _hook("KEEPGOING_BEFORE_LOCAL")
+            print(f"\n  Loading {model} on this PC …")
+            log = os.path.join(home(), "keepgoing-server.log")
+            print(f"  (server output: {log})")
+            procs = start_servers(load_config(), log_path=log)
+        cenv = local_claude_env(model)
+        cenv.update(OFFLINE_ENV)
+        cenv.pop("ANTHROPIC_AUTH_TOKEN", None)
+        print(f"\n  Continuing on {model}, 100% on this PC …\n")
+        return subprocess.call([claude, "--model", cenv["ANTHROPIC_MODEL"], "--resume", sid] + extra,
+                               env=cenv)
+    finally:
+        if procs:
+            for p in reversed(procs):
+                p.terminate()
+            for p in procs:
+                try:
+                    p.wait(timeout=15)
+                except Exception:
+                    p.kill()
+        if os.environ.get("KEEPGOING_AFTER_LOCAL"):
+            print("\n  running your after-local command…")
+            _hook("KEEPGOING_AFTER_LOCAL")
 
 
 if __name__ == "__main__":
@@ -534,6 +720,10 @@ if __name__ == "__main__":
     pi.add_argument("--force", action="store_true", help="re-download llama.cpp even if present")
     pr = sub.add_parser("run")
     pr.add_argument("--no-claude", action="store_true", help="start servers but don't launch Claude Code")
+    sub.add_parser("keepgoing", help="resume this folder's Claude Code conversation on a free "
+                   "or local model ([--auto] [-- claude args])", add_help=False)
+    if len(sys.argv) > 1 and sys.argv[1] == "keepgoing":
+        sys.exit(cmd_keepgoing(sys.argv[2:]))
     a = ap.parse_args()
     if a.cmd == "detect":
         cmd_detect()

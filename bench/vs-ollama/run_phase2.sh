@@ -6,7 +6,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPS="${1:-3}"
-stop_ollama() { pkill -f "/opt/homebrew/bin/ollama serve"; while lsof -nP -iTCP:11434 -sTCP:LISTEN >/dev/null 2>&1; do sleep 1; done; }
+stop_ollama() { lsof -nP -t -iTCP:11434 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; while lsof -nP -iTCP:11434 -sTCP:LISTEN >/dev/null 2>&1; do sleep 1; done; }
 
 stop_ollama
 python3 "$HERE/run_bench.py" --setup ollama-16k --model qwen35-2b --reps "$REPS"
