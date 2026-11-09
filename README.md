@@ -16,6 +16,13 @@ Mac and Linux. Windows is [one PowerShell line](#-on-linux-or-a-windows-pc). On 
 
 **How-to guides and docs: [nicedreamzapp.github.io/claude-code-local](https://nicedreamzapp.github.io/claude-code-local/)**
 
+<!-- live-stats:start -->
+
+⭐ **3,691** GitHub stars ([github.com/nicedreamzapp](https://github.com/nicedreamzapp)) · ⬇️ **40,871** all-time downloads ([huggingface.co/divinetribe](https://huggingface.co/divinetribe))<br>
+Models on Hugging Face: [18 MLX builds at huggingface.co/divinetribe](https://huggingface.co/divinetribe) (⬇️ **38,330** all-time downloads) · this repo ⭐ **3,488** stars
+
+<!-- live-stats:end -->
+
 🆕 **Qwen 4 watch:** Alibaba says Qwen 4 is coming. The day the weights land we test it inside Claude Code and add it here, with real speed and scores. ⭐ Star or watch the repo to catch it. [The plan](#-qwen-4-in-claude-code-local)
 
 **[Agent-12](https://nicedreamzapp.github.io/agent12/) score** for the model setup picks on a 96 GB Mac, Qwen 3.8 27B: **12/12 easy, 7/8 hard**.
