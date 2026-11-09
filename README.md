@@ -16,6 +16,8 @@ Mac and Linux. Windows is [one PowerShell line](#-on-linux-or-a-windows-pc). On 
 
 **How-to guides and docs: [nicedreamzapp.github.io/claude-code-local](https://nicedreamzapp.github.io/claude-code-local/)**
 
+🆕 **Qwen 4 watch:** Alibaba says Qwen 4 is coming. The day the weights land we test it inside Claude Code and add it here, with real speed and scores. ⭐ Star or watch the repo to catch it. [The plan](#-qwen-4-in-claude-code-local)
+
 **[Agent-12](https://nicedreamzapp.github.io/agent12/) score** for the model setup picks on a 96 GB Mac, Qwen 3.8 27B: **12/12 easy, 7/8 hard**.
 <sub>Scored in Agent-12's own harness, not inside Claude Code. [How the models compare](#-pick-your-ai)</sub>
 
@@ -410,6 +412,17 @@ from scratch by the same person who made this project, and it makes long local-A
 
 👉 **[Get Trinidad Head](https://github.com/nicedreamzapp/trinidad-head)** · [project page](https://nicedreamzwholesale.com/software/trinidad-head/)
 
+### 🆕 Qwen 4 in Claude Code Local
+
+**Status: waiting on the release.** Alibaba has said Qwen 4 is in training and has not published the weights yet. Here is what happens the day it ships:
+
+1. **Download it the same day** from the official Qwen page on Hugging Face, plus the MLX and GGUF builds as they appear.
+2. **Run it inside Claude Code**, through the same server that already handles Qwen 3.5 and Qwen 3.8 tool calls, and fix anything new in its tool-call format.
+3. **Score it in [Agent-12](https://nicedreamzapp.github.io/agent12/)** next to Qwen 3.8 27B (12/12 easy, 7/8 hard), each build sized for the Macs and PCs it fits.
+4. **Post the numbers here**: memory used, tokens per second, and which Mac or PC each size needs, then one line to install it: `bash scripts/download-and-import.sh qwen4`.
+
+Nothing here claims Qwen 4 works until we've run it ourselves.
+
 ### 🔭 Where this is going
 
 Claude Code Local started as a way to keep building when the cloud says no. The bigger idea: **local for the everyday, cloud for the hard stuff.** Most of what we ask an AI to do in a day is small. Read this, fix that, run it, check it. A small model on your own machine can do those jobs fast, free and private, and the big cloud models stay there for the few jobs that really need them.
@@ -475,6 +488,9 @@ CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 <picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-r1.svg" width="100%" alt="Full guide. Every model table, benchmark, tuning setting and design note. Other ways. Ollama, claude-code-router and claude-code-proxy. Contributors. Eight people fixed things; they are named below."></picture>
 
 ### ❓ Usage limit FAQ
+
+**Can I run Qwen 4 in Claude Code?**
+Not yet, because Qwen 4 isn't out. Claude Code Local already runs Qwen 3.5 and Qwen 3.8 in Claude Code, and Qwen 4 gets added [the day it ships](#-qwen-4-in-claude-code-local).
 
 **Claude Code says "5-hour limit reached". What can I do?**
 Wait for the reset time it shows, pay for extra usage, or keep working on a local model with this
