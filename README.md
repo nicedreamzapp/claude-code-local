@@ -23,6 +23,8 @@ Models on Hugging Face: [18 MLX builds at huggingface.co/divinetribe](https://hu
 
 <!-- live-stats:end -->
 
+**Using it at work or school? [Add yourself to the list](ADOPTERS.md).**
+
 🆕 **Qwen 4 watch:** Alibaba says Qwen 4 is coming. The day the weights land we test it inside Claude Code and add it here, with real speed and scores. ⭐ Star or watch the repo to catch it. [The plan](#-qwen-4-in-claude-code-local)
 
 **[Agent-12](https://nicedreamzapp.github.io/agent12/) score** for the model setup picks on a 96 GB Mac, Qwen 3.8 27B: **12/12 easy, 7/8 hard**.
