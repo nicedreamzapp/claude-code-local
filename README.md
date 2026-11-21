@@ -554,6 +554,11 @@ This isn't the only way to run Claude Code against models you choose, and some o
 
 What this repo adds is an MLX-native server tuned for Apple Silicon and for the tool-call formats local models actually emit.
 
+### 💖 Back the vision testing
+
+I'm buying a 512GB M5 Ultra Mac Studio to test the biggest open vision models at full precision and publish every result here, free for everyone.
+If Claude Code Local helped you, [sponsoring on GitHub](https://github.com/sponsors/nicedreamzapp) helps pay for it, and backers help pick which vision models get tested next.
+
 ### 🤝 Help make it better
 
 Ideas, bug reports, a launcher for a model we don't run: open an
@@ -568,17 +573,6 @@ We especially love hearing from people on older or smaller Macs about which mode
 [@zwolf25](https://github.com/zwolf25). What each of them fixed is in
 the [full guide](docs/FULL-GUIDE.md#-credits).
 
-
-<div align="center">
-
-Built by **[Matt Macosko](https://x.com/NiceDreamzApps)** in Humboldt, California.
-**Open to work** on local AI and Apple Silicon: matt@ineedhemp.com
-
-[Nice Dreamz software](https://nicedreamzwholesale.com/software/) · [YouTube demos](https://www.youtube.com/@nicedreamzapps) · [Discord](https://discord.gg/ZdSqgAxUW)
-
-📜 **MIT License**, use it however you want. ⭐ **Star the repo if it helped you!**
-
-</div>
 
 <img src="https://raw.githubusercontent.com/nicedreamzapp/claude-code-local/ce65065a5327476e7fc1f6435116bd31c0e0e80d/assets/readme/s07-rule.svg" width="100%" alt="">
 
