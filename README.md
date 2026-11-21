@@ -556,8 +556,8 @@ What this repo adds is an MLX-native server tuned for Apple Silicon and for the 
 
 ### 💖 Back the vision testing
 
-I'm buying a 512GB M5 Ultra Mac Studio to test the biggest open vision models at full precision and publish every result here, free for everyone.
-If Claude Code Local helped you, [sponsoring on GitHub](https://github.com/sponsors/nicedreamzapp) helps pay for it, and backers help pick which vision models get tested next.
+I test the biggest open vision models at full precision on a 512GB M5 Ultra Mac Studio and publish every result here, free for everyone.
+If the results or Claude Code Local helped you, [sponsoring on GitHub](https://github.com/sponsors/nicedreamzapp) is a way to say thanks, and backers help pick which vision models get tested next.
 
 ### 🤝 Help make it better
 
