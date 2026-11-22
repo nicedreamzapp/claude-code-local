@@ -18,8 +18,8 @@ Mac and Linux. Windows is [one PowerShell line](#-on-linux-or-a-windows-pc). On 
 
 <!-- live-stats:start -->
 
-⭐ **3,741** GitHub stars ([github.com/nicedreamzapp](https://github.com/nicedreamzapp)) · ⬇️ **58,315** all-time downloads ([huggingface.co/divinetribe](https://huggingface.co/divinetribe))<br>
-Models on Hugging Face: [18 MLX builds at huggingface.co/divinetribe](https://huggingface.co/divinetribe) (⬇️ **51,726** all-time downloads) · this repo ⭐ **3,525** stars
+⭐ **3,744** GitHub stars ([github.com/nicedreamzapp](https://github.com/nicedreamzapp)) · ⬇️ **58,315** all-time downloads ([huggingface.co/divinetribe](https://huggingface.co/divinetribe))<br>
+Models on Hugging Face: [18 MLX builds at huggingface.co/divinetribe](https://huggingface.co/divinetribe) (⬇️ **51,726** all-time downloads) · this repo ⭐ **3,527** stars
 
 <!-- live-stats:end -->
 
